@@ -1,0 +1,21 @@
+---
+Language:        Cpp
+# BasedOnStyle:  LLVM
+AccessModifierOffset: -2
+AlignAfterOpenBracket: Align
+AlignArrayOfStructures: None
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Always
+BreakBeforeBraces: Attach
+ColumnLimit:     80
+ContinuationIndentWidth: 4
+IndentCaseLabels: true
+IndentWidth:     4
+PenaltyBreakBeforeFirstCallParameter: 1000
+PenaltyBreakComment: 1000
+PenaltyReturnTypeOnItsOwnLine: 60
+SortIncludes: false
+IndentPPDirectives: AfterHash
+TabWidth:        4
+UseTab:          Never
