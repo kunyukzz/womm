@@ -1,0 +1,97 @@
+#ifndef RENDERER_TYPE_H
+#define RENDERER_TYPE_H
+
+#include "core/define.h"
+#include "loader.h"
+
+/************************************
+ * SWAPCHAIN
+ ************************************/
+typedef struct {
+    VkImage handle;
+    VkImageView view;
+    VkFormat format;
+
+    VkDeviceMemory memory;
+    VkDeviceSize size;
+
+    uint32_t width;
+    uint32_t height;
+} vk_image_t;
+
+typedef struct vk_swapchain_t {
+    VkImage *images;
+    VkImageView *img_views;
+    VkFramebuffer *framebuffer;
+
+    VkSurfaceKHR surface;
+    VkSwapchainKHR handle;
+
+    VkSurfaceCapabilitiesKHR caps;
+    VkSurfaceFormatKHR surface_format;
+
+    VkExtent2D extents;
+
+    VkPresentModeKHR present_mode;
+    VkFormat image_format;
+    uint32_t image_count;
+
+    vk_image_t color_attach;
+    vk_image_t depth_attach;
+} vk_swapchain_t;
+
+/************************************
+ * CORE
+ ************************************/
+typedef enum {
+    RE_UNKNOWN = 0x00,
+    RE_TEXTURE,        // Base color, normal, roughness/metallic maps
+    RE_TEXTURE_HDR,    // HDR cubemaps, IBL textures
+    RE_TEXTURE_UI,     // UI atlas, fonts
+    RE_BUFFER_VERTEX,  // Vertex buffers for meshes
+    RE_BUFFER_INDEX,   // Index buffers
+    RE_BUFFER_UNIFORM, // Uniform buffers (per-frame, per-object)
+    RE_BUFFER_STAGING, // Staging buffers for uploads
+    RE_BUFFER_COMPUTE, // SSBOs for compute shaders
+    RE_RENDER_TARGET,  // Color attachments, G-Buffers
+    RE_DEPTH_TARGET,   // Depth/Stencil attachments
+    RE_COUNT
+} vram_tag_t;
+
+typedef struct vk_core_t {
+#if DEBUG
+    VkDebugUtilsMessengerEXT util_dbg;
+#endif
+
+    VkInstance instance;
+    VkAllocationCallbacks *alloc;
+
+    VkPhysicalDevice gpu;
+    VkDevice logic_dvc;
+    VkCommandPool gfx_pool;
+
+    VkPhysicalDeviceProperties properties;
+    VkPhysicalDeviceFeatures features;
+    VkPhysicalDeviceMemoryProperties mem_prop;
+
+    struct {
+        VkDeviceSize total_allocated;
+        VkDeviceSize budget;
+        VkDeviceSize dvc_local_used;
+        VkDeviceSize host_visible_used;
+
+        uint64_t tag_alloc_count[RE_COUNT];
+        uint64_t tag_alloc[RE_COUNT];
+    } memories;
+
+    VkQueue graphic_queue;
+    VkQueue present_queue;
+    VkQueue transfer_queue;
+    VkFormat default_depth_format;
+
+    uint32_t graphic_idx;
+    uint32_t present_idx;
+    uint32_t transfer_idx;
+} vk_core_t;
+
+#endif // RENDERER_TYPE_H

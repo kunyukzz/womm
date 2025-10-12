@@ -2,8 +2,11 @@
 #include "core/arena.h"
 #include "core/event.h"
 #include "core/input.h"
+#include "core/memory.h"
 
 #include "platform/window.h"
+
+#include "renderer/frontend.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -68,6 +71,7 @@ typedef struct {
     window_system_t *window;
     event_system_t *event;
     input_system_t *input;
+    render_system_t *render;
     game_system_t *game;
 } system_t;
 
@@ -150,6 +154,15 @@ bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
 }
 
 int main(void) {
+    uint64_t estimated_memory = 10 * 1024 * 1024;
+    if (!memory_system_init(estimated_memory)) {
+        LOG_ERROR("Failed to init memory system with estimated size: %lu",
+                  estimated_memory);
+        return -1;
+    }
+
+    g_system.game = WALLOC(sizeof(game_system_t), MEM_GAME);
+
     arena_alloc_t persistent_arena, frame_arena;
     arena_create(128 * 1024, &persistent_arena);
     arena_create(64 * 1024, &frame_arena);
@@ -162,7 +175,9 @@ int main(void) {
     g_system.window = window_system_init(config, &persistent_arena);
     g_system.event = event_system_init(&persistent_arena);
     g_system.input = input_system_init(&persistent_arena);
-    g_system.game = game_init(&persistent_arena);
+    g_system.render =
+        render_system_init(&persistent_arena, &g_system.window->native_win);
+    // g_system.game = game_init(&persistent_arena);
 
     event_reg(g_system.event, EVENT_QUIT, game_on_event, NULL);
     event_reg(g_system.event, EVENT_SUSPEND, game_on_event, NULL);
@@ -173,8 +188,8 @@ int main(void) {
 
     const double TARGET_FPS = 60.0;
     const double TARGET_FRAME_TIME = 1.0 / TARGET_FPS;
-    g_system.game->is_running = true;
 
+    g_system.game->is_running = true;
     clock_start(&g_system.game->time_clock);
     clock_update(&g_system.game->time_clock);
     g_system.game->last_time = g_system.game->time_clock.elapsed;
@@ -182,6 +197,9 @@ int main(void) {
     double runtime = 0;
     uint8_t frame_count = 0;
     const bool limit = false;
+
+    LOG_INFO("%s", mem_debug_stat());
+    LOG_INFO("%s", vram_status(g_system.render));
 
     while (g_system.game->is_running) {
         if (!window_system_pump(g_system.window, g_system.input,
@@ -245,9 +263,14 @@ int main(void) {
     event_unreg(g_system.event, EVENT_KEY_RELEASE, game_on_input, NULL);
 
     game_shutdown(g_system.game);
+    render_system_kill(g_system.render);
     input_system_kill(g_system.input);
     event_system_kill(g_system.event);
     window_system_kill(g_system.window);
 
+    arena_kill(&frame_arena);
+    arena_kill(&persistent_arena);
+
+    memory_system_kill();
     return 0;
 }
