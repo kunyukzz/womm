@@ -11,8 +11,7 @@ typedef struct {
     bool own_memory;
 } arena_alloc_t;
 
-bool arena_set(uint64_t total_size, void *memory, arena_alloc_t *arena);
-bool arena_create(uint64_t total_size, arena_alloc_t *arena);
+bool arena_create(uint64_t total_size, arena_alloc_t *arena, void *memory);
 void arena_kill(arena_alloc_t *arena);
 
 void *arena_alloc_align(arena_alloc_t *arena, uint64_t size, uint8_t alignment);

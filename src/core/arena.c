@@ -1,34 +1,35 @@
 #include "arena.h"
+#include "memory.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-bool arena_set(uint64_t total_size, void *memory, arena_alloc_t *arena) {
-    if (!memory || !arena) return false;
+#define DEFAULT_ALIGNMENT 0x08
+
+bool arena_create(uint64_t total_size, arena_alloc_t *arena, void *memory) {
+    if (!arena) return false;
 
     arena->total_size = total_size;
     arena->prev_offset = 0;
     arena->curr_offset = 0;
-    arena->memory = memory;
-    arena->own_memory = false;
+    arena->own_memory = memory == NULL;
 
-    return true;
-}
+    if (memory) {
+        arena->memory = memory;
+    } else {
+        arena->memory = WALLOC(total_size, MEM_ARENA);
+    }
 
-bool arena_create(uint64_t total_size, arena_alloc_t *arena) {
-    if (!arena) return false;
-
-    void *memory = malloc(total_size);
     if (!memory) return false;
 
-    return arena_set(total_size, memory, arena);
+    return true;
 }
 
 void arena_kill(arena_alloc_t *arena) {
     if (!arena) return;
 
-    if (arena->own_memory && arena->memory) {
-        free(arena->memory);
+    if (arena->memory) {
+        WFREE(arena->memory, arena->total_size, MEM_ARENA);
     }
     memset(arena, 0, sizeof(*arena));
 }
@@ -51,7 +52,7 @@ void *arena_alloc_align(arena_alloc_t *arena, uint64_t size,
 }
 
 void *arena_alloc(arena_alloc_t *arena, uint64_t size) {
-    return arena_alloc_align(arena, size, 8);
+    return arena_alloc_align(arena, size, DEFAULT_ALIGNMENT);
 }
 
 void arena_reset(arena_alloc_t *arena) {
