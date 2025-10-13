@@ -1,7 +1,7 @@
 #ifndef RENDERER_FRONTEND_H
 #define RENDERER_FRONTEND_H
 
-#include "core/define.h"
+#include "core/define.h" // IWYU pragma: keep
 #include "platform/window.h"
 #include "backend_type.h"
 
@@ -10,6 +10,11 @@ typedef struct {
     vk_swapchain_t swap;
     vk_renderpass_t main_pass;
     vk_cmdbuffer_t cmds[FRAME_FLIGHT];
+
+    vk_buffer_t vertex_buffer;
+    vk_buffer_t index_buffer;
+
+    vk_material_t main_material;
 
     VkSemaphore avail_sema[FRAME_FLIGHT];
     VkSemaphore *done_sema;

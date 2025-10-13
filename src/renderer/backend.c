@@ -1,7 +1,10 @@
 #include "backend.h"
 #include "core/memory.h"
+#include "core/paths.h"
+#include "core/binary_loader.h"
 
 #include <string.h> // strcmp
+#include <stdio.h>
 
 /************************************
  * CORE
@@ -1066,4 +1069,453 @@ void cmdbuff_temp_kill(vk_core_t *core, vk_cmdbuffer_t *cmd, VkCommandPool pool,
     CHECK_VK(re.vkQueueWaitIdle(queue));
 
     cmdbuff_free(core, cmd, pool);
+}
+
+/************************************
+ * BUFFER
+ ************************************/
+bool buffer_init(vk_core_t *core, vk_buffer_t *out, VkBufferUsageFlags usage,
+                 VkDeviceSize size, VkMemoryPropertyFlags mem_prop,
+                 vram_tag_t tag) {
+    memset(out, 0, sizeof(vk_buffer_t));
+
+    VkBufferCreateInfo bf_info = {};
+    bf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bf_info.size = size;
+    bf_info.usage = usage;
+    bf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    CHECK_VK(re.vkCreateBuffer(core->logic_dvc, &bf_info, core->alloc,
+                               &out->handle));
+
+    VkMemoryRequirements mem_req;
+    re.vkGetBufferMemoryRequirements(core->logic_dvc, out->handle, &mem_req);
+    out->size = mem_req.size;
+    out->is_locked = false;
+    out->mapped = NULL;
+
+    if (re_memalloc(core, &mem_req, mem_prop, &out->memory, tag)) {
+        CHECK_VK(re.vkBindBufferMemory(core->logic_dvc, out->handle,
+                                       out->memory, 0));
+    } else {
+        re.vkDestroyBuffer(core->logic_dvc, out->handle, core->alloc);
+        out->handle = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
+}
+
+void buffer_kill(vk_core_t *core, vk_buffer_t *buffer,
+                 VkMemoryPropertyFlags mem_prop, vram_tag_t tag) {
+    if (buffer->memory) {
+        re_memfree(core, buffer->memory, mem_prop, buffer->size, tag);
+        buffer->memory = 0;
+    }
+    if (buffer->handle) {
+        re.vkDestroyBuffer(core->logic_dvc, buffer->handle, core->alloc);
+        buffer->handle = VK_NULL_HANDLE;
+    }
+
+    buffer->size = 0;
+    buffer->is_locked = false;
+    buffer->mapped = 0;
+}
+
+void buffer_bind(vk_core_t *core, vk_buffer_t *buffer, VkDeviceSize offset) {
+    re.vkBindBufferMemory(core->logic_dvc, buffer->handle, buffer->memory,
+                          offset);
+}
+
+void buffer_copy(vk_core_t *core, VkBuffer src, VkBuffer dst,
+                 VkDeviceSize src_offset, VkDeviceSize dst_offset,
+                 VkDeviceSize size, VkCommandPool pool, VkQueue queue) {
+    vk_cmdbuffer_t temp;
+    cmdbuff_temp_init(core, &temp, pool);
+
+    VkBufferCopy copy_region = {};
+    copy_region.srcOffset = src_offset;
+    copy_region.dstOffset = dst_offset;
+    copy_region.size = size;
+
+    re.vkCmdCopyBuffer(temp.handle, src, dst, 1, &copy_region);
+    cmdbuff_temp_kill(core, &temp, pool, queue);
+}
+
+void buffer_load(vk_core_t *core, vk_buffer_t *buffer, VkDeviceSize offset,
+                 VkDeviceSize size, const void *data) {
+    void *mapped_ptr;
+    re.vkMapMemory(core->logic_dvc, buffer->memory, offset, size, 0,
+                   &mapped_ptr);
+
+    memcpy(mapped_ptr, data, size);
+    re.vkUnmapMemory(core->logic_dvc, buffer->memory);
+}
+
+/************************************
+ * PIPELINE
+ ************************************/
+bool pipeline_init(vk_core_t *core, vk_pipeline_t *pipeline,
+                   vk_renderpass_t *rpass, const vk_pipeline_desc_t *desc,
+                   pipe_config_t config) {
+    /*** viewport state ***/
+    VkPipelineViewportStateCreateInfo viewport_info = {};
+    viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_info.viewportCount = 1;
+    viewport_info.scissorCount = 1;
+
+    /*** multisample state ***/
+    VkPipelineMultisampleStateCreateInfo multi_sample_info = {};
+    multi_sample_info.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multi_sample_info.sampleShadingEnable = VK_FALSE;
+    multi_sample_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multi_sample_info.minSampleShading = 1.0f;
+
+    /*** raster state ***/
+    VkPipelineRasterizationStateCreateInfo raster_info = {};
+    raster_info.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    raster_info.polygonMode =
+        config.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+    raster_info.cullMode = config.cull_mode;
+    raster_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster_info.lineWidth = 1.0f;
+
+    /*** depth stencil state ***/
+    VkPipelineDepthStencilStateCreateInfo depth_stencil = {};
+    depth_stencil.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth_stencil.depthTestEnable = config.depth_test;
+    depth_stencil.depthWriteEnable = config.depth_write;
+    depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depth_stencil.depthBoundsTestEnable = VK_FALSE;
+    depth_stencil.stencilTestEnable = VK_FALSE;
+
+    /*** color blend state ***/
+    VkPipelineColorBlendAttachmentState color_blend_attachment = {
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+
+        .blendEnable = VK_TRUE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+    };
+
+    VkPipelineColorBlendStateCreateInfo color_blend_info = {};
+    color_blend_info.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    color_blend_info.logicOpEnable = VK_FALSE;
+    color_blend_info.attachmentCount = 1;
+    color_blend_info.pAttachments = &color_blend_attachment;
+    color_blend_info.logicOp = VK_LOGIC_OP_COPY;
+
+    /*** vertex input state ***/
+    VkVertexInputBindingDescription bind_desc;
+    bind_desc.binding = 0;
+    bind_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    bind_desc.stride = desc->vertex_stride;
+
+    /* Attributes */
+    VkPipelineVertexInputStateCreateInfo vert_info = {};
+    vert_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vert_info.vertexBindingDescriptionCount = 1;
+    vert_info.pVertexBindingDescriptions = &bind_desc;
+    vert_info.vertexAttributeDescriptionCount = desc->attribute_count;
+    vert_info.pVertexAttributeDescriptions = desc->attrs;
+
+    /*** input assembly state ***/
+    VkPipelineInputAssemblyStateCreateInfo input_asm = {};
+    input_asm.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_asm.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_asm.primitiveRestartEnable = VK_FALSE;
+
+    /*** push constant ***/
+    VkPushConstantRange push_const[desc->push_constant_count];
+    for (uint32_t i = 0; i < desc->push_constant_count; ++i) {
+        push_const[i].stageFlags = desc->push_consts[i].stageFlags;
+        push_const[i].offset = desc->push_consts[i].offset;
+        push_const[i].size = desc->push_consts[i].size;
+    }
+
+    /*** pipeline layout ***/
+    VkPipelineLayoutCreateInfo layout_info = {};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.setLayoutCount = desc->desc_layout_count;
+    layout_info.pSetLayouts =
+        desc->desc_layout_count > 0 ? desc->desc_layouts : NULL;
+    layout_info.pushConstantRangeCount = desc->push_constant_count;
+    layout_info.pushConstantRangeCount = desc->push_constant_count;
+    layout_info.pPushConstantRanges =
+        desc->push_constant_count > 0 ? push_const : NULL;
+
+    CHECK_VK(re.vkCreatePipelineLayout(core->logic_dvc, &layout_info,
+                                       core->alloc, &pipeline->layout));
+
+    VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT,
+                                       VK_DYNAMIC_STATE_SCISSOR,
+                                       VK_DYNAMIC_STATE_LINE_WIDTH};
+
+    VkPipelineDynamicStateCreateInfo dyn_info = {};
+    dyn_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dyn_info.dynamicStateCount = 3;
+    dyn_info.pDynamicStates = dynamic_states;
+
+    /*** graphic pipeline ***/
+    VkGraphicsPipelineCreateInfo pipeline_info = {};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_info.layout = pipeline->layout;
+    pipeline_info.renderPass = rpass->handle;
+    pipeline_info.stageCount = desc->stage_count;
+    pipeline_info.pStages = desc->stages;
+    pipeline_info.pVertexInputState = &vert_info;
+    pipeline_info.pInputAssemblyState = &input_asm;
+    pipeline_info.pViewportState = &viewport_info;
+    pipeline_info.pRasterizationState = &raster_info;
+    pipeline_info.pMultisampleState = &multi_sample_info;
+    pipeline_info.pDepthStencilState = &depth_stencil;
+    pipeline_info.pColorBlendState = &color_blend_info;
+    pipeline_info.pDynamicState = &dyn_info;
+    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline_info.subpass = 0;
+
+    CHECK_VK(re.vkCreateGraphicsPipelines(core->logic_dvc, VK_NULL_HANDLE, 1,
+                                          &pipeline_info, core->alloc,
+                                          &pipeline->handle));
+
+    LOG_DEBUG("vulkan pipeline initialize");
+    return true;
+}
+
+void pipeline_bind(vk_pipeline_t *pipeline, VkCommandBuffer cmdbuffer,
+                   VkPipelineBindPoint bind_point) {
+    re.vkCmdBindPipeline(cmdbuffer, bind_point, pipeline->handle);
+}
+
+void pipeline_kill(vk_core_t *core, vk_pipeline_t *pipeline) {
+    if (pipeline) {
+        if (pipeline->handle) {
+            re.vkDestroyPipeline(core->logic_dvc, pipeline->handle,
+                                 core->alloc);
+            pipeline->handle = VK_NULL_HANDLE;
+        }
+
+        if (pipeline->layout) {
+            re.vkDestroyPipelineLayout(core->logic_dvc, pipeline->layout,
+                                       core->alloc);
+            pipeline->layout = 0;
+        }
+        LOG_DEBUG("vulkan pipeline kill");
+    }
+}
+
+/************************************
+ * MATERIAL
+ ************************************/
+static VkShaderModule vk_shader_create(vk_core_t *core, const void *bytecode,
+                                       VkDeviceSize size) {
+    VkShaderModuleCreateInfo info =
+        {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .codeSize = size,
+         .pCode = (const uint32_t *)bytecode};
+
+    VkShaderModule module;
+    if (re.vkCreateShaderModule(core->logic_dvc, &info, core->alloc, &module) !=
+        VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+    return module;
+}
+
+static void vk_shader_destroy(vk_core_t *core, VkShaderModule module) {
+    re.vkDestroyShaderModule(core->logic_dvc, module, core->alloc);
+}
+
+static bool set_shader(vk_core_t *core, vk_material_t *material,
+                       const char *name) {
+    char vert_path[MAX_PATH];
+    char frag_path[MAX_PATH];
+    snprintf(vert_path, sizeof(vert_path), "%s.vert.spv", name);
+    snprintf(frag_path, sizeof(frag_path), "%s.frag.spv", name);
+
+    uint64_t vert_size = 0, frag_size = 0;
+    void *vert_code = read_file_binary(vert_path, &vert_size);
+    void *frag_code = read_file_binary(frag_path, &frag_size);
+
+    if (!vert_code || !frag_code) {
+        if (vert_code) WFREE(vert_code, vert_size, MEM_RESOURCE);
+        if (frag_code) WFREE(frag_code, frag_size, MEM_RESOURCE);
+        return false;
+    }
+
+    // Store directly in the bundle
+    material->shaders.vert = vk_shader_create(core, vert_code, vert_size);
+    material->shaders.frag = vk_shader_create(core, frag_code, frag_size);
+    material->shaders.entry_point = "main";
+
+    WFREE(vert_code, vert_size, MEM_RESOURCE);
+    WFREE(frag_code, frag_size, MEM_RESOURCE);
+
+    return (material->shaders.vert != VK_NULL_HANDLE &&
+            material->shaders.frag != VK_NULL_HANDLE);
+}
+
+static void unset_shader(vk_core_t *core, vk_material_t *material) {
+    if (!material) return;
+
+    if (material->shaders.vert) {
+        vk_shader_destroy(core, material->shaders.vert);
+        material->shaders.vert = VK_NULL_HANDLE;
+    }
+    if (material->shaders.frag) {
+        vk_shader_destroy(core, material->shaders.frag);
+        material->shaders.frag = VK_NULL_HANDLE;
+    }
+}
+
+bool material_world_init(vk_core_t *core, vk_material_t *material,
+                         vk_renderpass_t *rpass, const char *shader_name) {
+    if (!set_shader(core, material, shader_name)) return false;
+
+    VkDescriptorSetLayoutBinding ubo_binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    };
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &ubo_binding,
+    };
+    CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &layout_info,
+                                            core->alloc, &material->layout));
+
+    VkDescriptorPoolSize pool_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = FRAME_FLIGHT};
+
+    VkDescriptorPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = FRAME_FLIGHT,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+    };
+    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &pool_info, core->alloc,
+                                       &material->pool));
+
+    for (uint16_t i = 0; i < FRAME_FLIGHT; ++i) {
+        buffer_init(core, &material->buffers[i],
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    sizeof(vk_camera_data_t),
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                    RE_BUFFER_UNIFORM);
+
+        void *map = NULL;
+        CHECK_VK(re.vkMapMemory(core->logic_dvc, material->buffers[i].memory, 0,
+                                sizeof(vk_camera_data_t), 0, &map));
+
+        VkDescriptorSetAllocateInfo alloc_info = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = material->pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &material->layout,
+        };
+
+        CHECK_VK(re.vkAllocateDescriptorSets(core->logic_dvc, &alloc_info,
+                                             &material->sets[i]));
+
+        VkDescriptorBufferInfo buffer_info = {.buffer =
+                                                  material->buffers[i].handle,
+                                              .offset = 0,
+                                              .range =
+                                                  sizeof(vk_camera_data_t)};
+
+        VkWriteDescriptorSet descriptor_write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = material->sets[i],
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &buffer_info,
+        };
+        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &descriptor_write, 0,
+                                  NULL);
+    }
+
+    VkPipelineShaderStageCreateInfo stages[2] =
+        {{
+             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+             .stage = VK_SHADER_STAGE_VERTEX_BIT,
+             .module = material->shaders.vert,
+             .pName = material->shaders.entry_point,
+         },
+         {
+             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+             .module = material->shaders.frag,
+             .pName = material->shaders.entry_point,
+         }};
+
+    VkPushConstantRange push_constants[] = {
+        {.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+         .offset = 0,
+         .size = sizeof(mat4)}};
+
+    VkVertexInputAttributeDescription attrs[] =
+        {{.location = 0,
+          .binding = 0,
+          .format = VK_FORMAT_R32G32B32_SFLOAT,
+          .offset = offsetof(vertex_3d, position)},
+         {.location = 1,
+          .binding = 0,
+          .format = VK_FORMAT_R32G32_SFLOAT,
+          .offset = offsetof(vertex_3d, texcoord)}};
+
+    vk_pipeline_desc_t world_desc = {.stages = stages,
+                                     .stage_count = 2,
+                                     .desc_layouts = &material->layout,
+                                     .desc_layout_count = 1,
+                                     .push_consts = push_constants,
+                                     .push_constant_count = 1,
+                                     .attrs = attrs,
+                                     .attribute_count = 2,
+                                     .vertex_stride = sizeof(vertex_3d)};
+
+    pipe_config_t world_config = {.wireframe = true,
+                                  .depth_test = true,
+                                  .depth_write = true,
+                                  .cull_mode = VK_CULL_MODE_BACK_BIT};
+
+    return pipeline_init(core, &material->pipelines, rpass, &world_desc,
+                         world_config);
+}
+
+void material_kill(vk_core_t *core, vk_material_t *material) {
+    pipeline_kill(core, &material->pipelines);
+
+    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
+        VkMemoryPropertyFlags mem_prop = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        buffer_kill(core, &material->buffers[i], mem_prop, RE_BUFFER_UNIFORM);
+    }
+
+    if (material->pool) {
+        re.vkDestroyDescriptorPool(core->logic_dvc, material->pool,
+                                   core->alloc);
+        material->pool = VK_NULL_HANDLE;
+    }
+
+    if (material->layout) {
+        re.vkDestroyDescriptorSetLayout(core->logic_dvc, material->layout,
+                                        core->alloc);
+        material->layout = VK_NULL_HANDLE;
+    }
+
+    unset_shader(core, material);
 }

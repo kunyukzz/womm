@@ -47,5 +47,6 @@ void *window_system_get_native_window(const window_system_t *window);
 
 double get_abs_time(void);
 void get_sleep(double wake);
+bool get_current_dir(char *out_path, uint64_t max_len);
 
 #endif // WINDOW_H

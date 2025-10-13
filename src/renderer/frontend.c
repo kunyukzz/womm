@@ -1,6 +1,7 @@
 #include "frontend.h"
 #include "backend.h"
 #include "core/memory.h"
+#include "core/math/math_type.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -213,6 +214,44 @@ static void unset_framebuffer(render_system_t *r) {
 }
 
 /************************************
+ * BUFFER VERTEX & INDEX SET
+ ************************************/
+static bool set_object_buffer(render_system_t *r) {
+    VkMemoryPropertyFlagBits mem_prop = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    const uint64_t vb_size_3d = sizeof(vertex_3d) * 1024 * 1024; // 32Mb
+    buffer_init(&r->vk.core, &r->vk.vertex_buffer,
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                vb_size_3d, mem_prop, RE_BUFFER_VERTEX);
+
+    const uint32_t ib_size = sizeof(uint32_t) * 1024 * 1024; // 4Mb
+    buffer_init(&r->vk.core, &r->vk.index_buffer,
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                ib_size, mem_prop, RE_BUFFER_INDEX);
+
+    LOG_DEBUG("vulkan buffer initialize");
+    return true;
+}
+
+static void unset_object_buffer(render_system_t *r) {
+    VkMemoryPropertyFlagBits mem_prop = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    if (r->vk.vertex_buffer.handle != VK_NULL_HANDLE) {
+        buffer_kill(&r->vk.core, &r->vk.vertex_buffer, mem_prop,
+                    RE_BUFFER_VERTEX);
+    }
+
+    if (r->vk.index_buffer.handle != VK_NULL_HANDLE) {
+        buffer_kill(&r->vk.core, &r->vk.index_buffer, mem_prop,
+                    RE_BUFFER_INDEX);
+    }
+    LOG_DEBUG("vulkan buffer kill");
+}
+
+/************************************
  * INTERNAL FRAME
  ************************************/
 static bool begin_frame(render_system_t *r, float delta) {
@@ -275,6 +314,7 @@ static bool begin_frame(render_system_t *r, float delta) {
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     re.vkCmdSetViewport(cmd, 0, 1, &viewport);
     re.vkCmdSetScissor(cmd, 0, 1, &scissor);
+    re.vkCmdSetLineWidth(cmd, 1.0f);
     return true;
 }
 
@@ -347,6 +387,69 @@ static bool end_pass(render_system_t *r) {
     return true;
 }
 
+/************************************
+ * DRAW CALL
+ ************************************/
+bool draw_world(render_system_t *r) {
+    VkDescriptorSet sets = r->vk.main_material.sets[r->vk.frame_idx];
+    VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
+    vk_pipeline_t pipeline = r->vk.main_material.pipelines;
+
+    pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
+    re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                               pipeline.layout, 0, 1, &sets, 0, 0);
+
+    /*
+    re.vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+                          sizeof(mat4), &mesh.model);
+                          */
+
+    // geometry_gpu_t *data = &be->obj_data.geo[mesh.geometry->internal_id];
+    VkBuffer buff[] = {r->vk.vertex_buffer.handle};
+    VkDeviceSize offset[1] = {0};
+
+    /*
+    jnk_log_debug(CH_GFX,
+                  "vertex_offset=%llu index_offset=%llu index_count=%u "
+                  "stride=%zu",
+                  data->vertex_offset, data->index_offset, data->index_count,
+                  sizeof(vertex_3d));
+                  */
+
+    re.vkCmdBindVertexBuffers(cmd, 0, 1, buff, offset);
+    re.vkCmdBindIndexBuffer(cmd, r->vk.index_buffer.handle, 0,
+                            VK_INDEX_TYPE_UINT32);
+
+    re.vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+    return true;
+}
+
+/************************************
+ * STAGING BUFFER DATA
+ ************************************/
+static void set_staging_data(render_system_t *r, vk_buffer_t *buffer,
+                             VkCommandPool pool, VkQueue queue,
+                             VkDeviceSize offset, void *data, VkDeviceSize size,
+                             vram_tag_t tag) {
+    vk_core_t *core = &r->vk.core;
+    VkMemoryPropertyFlags mem_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    vk_buffer_t staging;
+    buffer_init(core, &staging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, size,
+                mem_flags, tag);
+
+    buffer_load(core, &staging, 0, size, data);
+    buffer_copy(core, staging.handle, buffer->handle, 0, offset, size, pool,
+                queue);
+
+    buffer_kill(core, &staging, mem_flags, tag);
+}
+
+/************************************************************************
+ ************************************************************************/
+
 render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     render_system_t *r = arena_alloc(arena, sizeof(render_system_t));
     if (!r) return NULL;
@@ -376,23 +479,70 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     set_sync(r);
     set_cmdbuffer(r);
     set_framebuffer(r);
+    set_object_buffer(r);
+
+    material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
+                        "shaders/base");
+
+    { // TODO: Temporary code!!
+        const uint32_t vertex_count = 4;
+        vertex_3d vert_3d[vertex_count];
+        memset(vert_3d, 0, sizeof(vertex_3d) * vertex_count);
+
+        vert_3d[0].position.comp1.x = -0.5f;
+        vert_3d[0].position.comp1.y = 0.5f;
+        vert_3d[0].texcoord.comp1.x = 0;
+        vert_3d[0].texcoord.comp1.y = 0;
+
+        vert_3d[1].position.comp1.x = 0.5f;
+        vert_3d[1].position.comp1.y = 0.5f;
+        vert_3d[1].texcoord.comp1.x = 1;
+        vert_3d[1].texcoord.comp1.y = 0;
+
+        vert_3d[2].position.comp1.x = 0.5f;
+        vert_3d[2].position.comp1.y = -0.5f;
+        vert_3d[2].texcoord.comp1.x = 1;
+        vert_3d[2].texcoord.comp1.y = 1;
+
+        vert_3d[3].position.comp1.x = -0.5f;
+        vert_3d[3].position.comp1.y = -0.5f;
+        vert_3d[3].texcoord.comp1.x = 0;
+        vert_3d[3].texcoord.comp1.y = 1;
+
+        const uint32_t idx_count = 6;
+        uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
+
+        set_staging_data(r, &r->vk.vertex_buffer, r->vk.core.gfx_pool,
+                         r->vk.core.graphic_queue, 0, vert_3d,
+                         sizeof(vertex_3d) * vertex_count, RE_BUFFER_STAGING);
+
+        set_staging_data(r, &r->vk.index_buffer, r->vk.core.gfx_pool,
+                         r->vk.core.graphic_queue, 0, indices,
+                         sizeof(uint32_t) * idx_count, RE_BUFFER_STAGING);
+    }
 
     LOG_INFO("render system initialized");
     return r;
 }
 
 void render_system_kill(render_system_t *r) {
-    if (r) {
-        re.vkDeviceWaitIdle(r->vk.core.logic_dvc);
-        unset_framebuffer(r);
-        unset_cmdbuffer(r);
-        unset_sync(r);
-        renderpass_kill(&r->vk.core, &r->vk.main_pass);
-        swapchain_kill(&r->vk.swap, &r->vk.core);
-        core_kill(&r->vk.core);
+    if (!r) return;
 
-        memset(r, 0, sizeof(render_system_t));
-    }
+    re.vkDeviceWaitIdle(r->vk.core.logic_dvc);
+
+    material_kill(&r->vk.core, &r->vk.main_material);
+
+    unset_object_buffer(r);
+    unset_framebuffer(r);
+    unset_cmdbuffer(r);
+    unset_sync(r);
+
+    renderpass_kill(&r->vk.core, &r->vk.main_pass);
+    swapchain_kill(&r->vk.swap, &r->vk.core);
+    core_kill(&r->vk.core);
+
+    memset(r, 0, sizeof(render_system_t));
+
     LOG_INFO("render system kill");
 }
 
@@ -403,7 +553,7 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
             return false;
         }
 
-        // TODO: draw world bundle
+        draw_world(r);
 
         if (!end_pass(r)) {
             return false;

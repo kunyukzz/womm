@@ -2,6 +2,7 @@
 #include "core/event.h"
 #include "core/input.h"
 #include "core/memory.h"
+#include "platform/filesystem.h"
 #include "renderer/frontend.h"
 #include "game/game.h"
 
@@ -12,6 +13,7 @@ typedef struct {
     arena_alloc_t persistent_arena;
     arena_alloc_t frame_arena;
 
+    file_system_t *fs;
     window_system_t *window;
     event_system_t *event;
     input_system_t *input;
@@ -69,6 +71,7 @@ static bool system_init(void) {
                               .is_resizeable = true};
 
     g_system.game = game_init();
+    g_system.fs = filesys_init(&g_system.persistent_arena);
     g_system.window = window_system_init(config, &g_system.persistent_arena);
     g_system.event = event_system_init(&g_system.persistent_arena);
     g_system.input = input_system_init(&g_system.persistent_arena);
@@ -103,6 +106,7 @@ static void system_kill(void) {
     input_system_kill(g_system.input);
     event_system_kill(g_system.event);
     window_system_kill(g_system.window);
+    filesys_kill(g_system.fs);
 
     arena_kill(&g_system.frame_arena);
     arena_kill(&g_system.persistent_arena);
