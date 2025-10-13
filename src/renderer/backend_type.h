@@ -1,8 +1,9 @@
 #ifndef RENDERER_TYPE_H
 #define RENDERER_TYPE_H
 
-#include "core/define.h"
+#include "core/define.h" // IWYU pragma: keep
 #include "loader.h"
+#include "core/math/math_type.h"
 
 #define FRAME_FLIGHT 2
 
@@ -58,6 +59,64 @@ typedef struct {
 typedef struct {
     VkCommandBuffer handle;
 } vk_cmdbuffer_t;
+
+/************************************
+ * BUFFER
+ ************************************/
+typedef struct {
+    VkBuffer handle;
+    VkDeviceSize size;
+    VkDeviceMemory memory;
+    bool is_locked;
+    void *mapped;
+} vk_buffer_t;
+
+/************************************
+ * MATERIAL
+ ************************************/
+typedef struct {
+    VkShaderModule vert;
+    VkShaderModule frag;
+    const char *entry_point;
+} vk_shader_t;
+
+typedef struct {
+    mat4 proj;
+    mat4 view;
+    mat4 _reserved00; // padding for some graphics card
+    mat4 _reserved01; // padding for some graphics card
+} vk_camera_data_t;
+
+typedef struct {
+    const VkPipelineShaderStageCreateInfo *stages;
+    uint32_t stage_count;
+
+    VkDescriptorSetLayout *desc_layouts;
+    uint32_t desc_layout_count;
+
+    VkPushConstantRange *push_consts;
+    uint32_t push_constant_count;
+
+    VkVertexInputAttributeDescription *attrs;
+    uint32_t attribute_count;
+    uint32_t vertex_stride;
+} vk_pipeline_desc_t;
+
+typedef struct {
+    VkPipeline handle;
+    VkPipelineLayout layout;
+} vk_pipeline_t;
+
+typedef struct {
+    vk_camera_data_t cam_ubo_data;
+    vk_buffer_t buffers[FRAME_FLIGHT];
+    vk_shader_t shaders;
+    vk_pipeline_t pipelines;
+
+    VkDescriptorSet sets[FRAME_FLIGHT];
+    VkDescriptorPool pool;
+    VkDescriptorSetLayout layout;
+} vk_material_t;
 
 /************************************
  * CORE

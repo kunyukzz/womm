@@ -1,8 +1,8 @@
 #include "window.h"
 #if PLATFORM_LINUX
 #    include <time.h>
-
 #    include <string.h>
+#    include <unistd.h>
 
 #    include <X11/XKBlib.h>
 #    include <X11/Xlib.h>
@@ -166,4 +166,12 @@ void get_sleep(double wake) {
     ts.tv_nsec = (long)((wake - (double)ts.tv_sec) * 1e9);
     clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
 }
+
+bool get_current_dir(char *out_path, uint64_t max_len) {
+    if (getcwd(out_path, max_len) != NULL) {
+        return true;
+    }
+    return false;
+}
+
 #endif

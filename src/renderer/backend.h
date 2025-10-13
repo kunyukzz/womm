@@ -75,3 +75,49 @@ void cmdbuff_temp_init(vk_core_t *core, vk_cmdbuffer_t *cmd,
 
 void cmdbuff_temp_kill(vk_core_t *core, vk_cmdbuffer_t *cmd, VkCommandPool pool,
                        VkQueue queue);
+
+/************************************
+ * BUFFER
+ ************************************/
+bool buffer_init(vk_core_t *core, vk_buffer_t *out, VkBufferUsageFlags usage,
+                 VkDeviceSize size, VkMemoryPropertyFlags mem_prop,
+                 vram_tag_t tag);
+
+void buffer_kill(vk_core_t *core, vk_buffer_t *buffer,
+                 VkMemoryPropertyFlags mem_prop, vram_tag_t tag);
+
+void buffer_bind(vk_core_t *core, vk_buffer_t *buffer, VkDeviceSize offset);
+
+void buffer_copy(vk_core_t *core, VkBuffer src, VkBuffer dst,
+                 VkDeviceSize src_offset, VkDeviceSize dst_offset,
+                 VkDeviceSize size, VkCommandPool pool, VkQueue queue);
+
+void buffer_load(vk_core_t *core, vk_buffer_t *buffer, VkDeviceSize offset,
+                 VkDeviceSize size, const void *data);
+
+/************************************
+ * PIPELINE
+ ************************************/
+typedef struct {
+    bool wireframe;
+    bool depth_test;
+    bool depth_write;
+    VkCullModeFlags cull_mode;
+} pipe_config_t;
+
+bool pipeline_init(vk_core_t *core, vk_pipeline_t *pipeline,
+                   vk_renderpass_t *rpass, const vk_pipeline_desc_t *desc,
+                   pipe_config_t config);
+
+void pipeline_bind(vk_pipeline_t *pipeline, VkCommandBuffer cmdbuffer,
+                   VkPipelineBindPoint bind_point);
+
+void pipeline_kill(vk_core_t *core, vk_pipeline_t *pipeline);
+
+/************************************
+ * MATERIAL
+ ************************************/
+bool material_world_init(vk_core_t *core, vk_material_t *material,
+                         vk_renderpass_t *rpass, const char *shader_name);
+
+void material_kill(vk_core_t *core, vk_material_t *material);
