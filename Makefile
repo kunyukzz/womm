@@ -41,7 +41,7 @@ DEP = $(OBJ:.o=.d)
 
 TARGET = bin/$(GAME_NAME)
 
-# Build dynamic library
+# Build
 $(TARGET): $(OBJ)
 	@mkdir -p $(dir $@)
 	@echo "Building $@"

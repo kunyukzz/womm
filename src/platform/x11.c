@@ -39,10 +39,16 @@ window_system_t *window_system_init(window_config_t config,
         return false;
     }
 
+    int screen_width = DisplayWidth(dpy, screen);
+    int screen_height = DisplayHeight(dpy, screen);
+    int x = ((uint32_t)screen_width - config.width) / 2;
+    int y = ((uint32_t)screen_height - config.height) / 2;
+
     Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(dpy, win, &wm_delete, 1);
     XStoreName(dpy, win, config.name);
     XMapWindow(dpy, win);
+    XMoveWindow(dpy, win, x, y);
     XFlush(dpy);
 
     window->native_win.display = dpy;

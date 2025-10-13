@@ -19,8 +19,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define CLAMP(value, min, max)                                                 \
-    (value <= min) ? min : (value >= max) ? max : value
+#define CLAMP(v, min, max) (v <= min) ? min : (v >= max) ? max : v
 #define LERP(a, b, t) ((a) + ((b) - (a)) * (t))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))

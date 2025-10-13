@@ -28,26 +28,28 @@ bool game_on_event(event_system_t *event, uint32_t type, event_t *ev,
 bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
                     void *sender, void *recipient);
 
+#if DEBUG
 static void system_log(void) {
-    LOG_INFO("=== Memory Addresses ===");
-    LOG_INFO("Window:  %p", g_system.window);
-    LOG_INFO("Event:   %p", g_system.event);
-    LOG_INFO("Input:   %p", g_system.input);
-    LOG_INFO("Render:  %p", g_system.render);
+    LOG_DEBUG("=== Memory Addresses ===");
+    LOG_DEBUG("Window:  %p", g_system.window);
+    LOG_DEBUG("Event:   %p", g_system.event);
+    LOG_DEBUG("Input:   %p", g_system.input);
+    LOG_DEBUG("Render:  %p", g_system.render);
 
     uint64_t used = arena_used(&g_system.persistent_arena);
     uint64_t total = g_system.persistent_arena.total_size;
     float usage_percent = (float)used / (float)total * 100.0f;
 
-    LOG_INFO("Arena Usage: %lu/%lu bytes (%.1f%%)", used, total, usage_percent);
+    LOG_DEBUG("Arena Usage: %lu/%lu bytes (%.1f%%)", used, total,
+              usage_percent);
 
     if (usage_percent < 50.0f) {
-        LOG_WARN("Lots of wasted space! Arena is only %.1f%% used",
-                 usage_percent);
+        LOG_WARN("Wasted space! Arena is only %.1f%% used", usage_percent);
     } else if (usage_percent > 90.0f) {
         LOG_WARN("Arena nearly full! %.1f%% used", usage_percent);
     }
 }
+#endif
 
 static bool system_init(void) {
     // set memory system allocation 10Mb
@@ -122,7 +124,7 @@ int main(void) {
 
     double runtime = 0;
     uint8_t frame_count = 0;
-    const bool limit = false;
+    const bool limit = true;
 
     LOG_INFO("%s", mem_debug_stat());
     LOG_INFO("%s", vram_status(g_system.render));
@@ -154,7 +156,10 @@ int main(void) {
                 break;
             }
 
-            // TODO: renderer system draw
+            // TODO: dont hanging bundle like this!!
+            render_bundle_t bundle;
+            bundle.delta = g_system.game->delta;
+            render_system_draw(g_system.render, &bundle);
 
             double next_frame_time = frame_time_start + TARGET_FRAME_TIME;
             double frame_time_end = get_abs_time();
@@ -164,10 +169,10 @@ int main(void) {
             if (limit && frame_time_end < next_frame_time) {
                 get_sleep(next_frame_time);
             }
-
-            // print FPS
-            static double fps_timer = 0.0;
             frame_count++;
+
+#if DEBUG
+            static double fps_timer = 0.0;
             fps_timer += g_system.game->delta;
 
             if (fps_timer >= 1.0) {
@@ -175,6 +180,7 @@ int main(void) {
                 frame_count = 0;
                 fps_timer = 0.0;
             }
+#endif
             (void)runtime;
         }
     }

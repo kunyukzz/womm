@@ -4,6 +4,8 @@
 #include "core/define.h"
 #include "loader.h"
 
+#define FRAME_FLIGHT 2
+
 /************************************
  * SWAPCHAIN
  ************************************/
@@ -41,6 +43,23 @@ typedef struct vk_swapchain_t {
 } vk_swapchain_t;
 
 /************************************
+ * RENDERPASS & COMMANDBUFFER
+ ************************************/
+typedef struct {
+    VkRenderPass handle;
+    float depth;
+    uint32_t stencil;
+    uint8_t clear_flag;
+    bool prev_pass;
+    bool next_pass;
+    VkClearColorValue clear_color;
+} vk_renderpass_t;
+
+typedef struct {
+    VkCommandBuffer handle;
+} vk_cmdbuffer_t;
+
+/************************************
  * CORE
  ************************************/
 typedef enum {
@@ -58,7 +77,7 @@ typedef enum {
     RE_COUNT
 } vram_tag_t;
 
-typedef struct vk_core_t {
+typedef struct {
 #if DEBUG
     VkDebugUtilsMessengerEXT util_dbg;
 #endif
