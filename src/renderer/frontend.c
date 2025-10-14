@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdio.h>
 
+static render_system_t *g_re = NULL;
+
 static const char *tag_str[RE_COUNT] = {
     "RE_UNKNOWN",
     "RE_TEXTURE",        // Base color, normal, roughness/metallic maps
@@ -314,7 +316,7 @@ static bool begin_frame(render_system_t *r, float delta) {
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     re.vkCmdSetViewport(cmd, 0, 1, &viewport);
     re.vkCmdSetScissor(cmd, 0, 1, &scissor);
-    re.vkCmdSetLineWidth(cmd, 1.0f);
+    // re.vkCmdSetLineWidth(cmd, 1.0f);
     return true;
 }
 
@@ -390,7 +392,7 @@ static bool end_pass(render_system_t *r) {
 /************************************
  * DRAW CALL
  ************************************/
-bool draw_world(render_system_t *r) {
+static bool draw_world(render_system_t *r, render_bundle_t *bundle) {
     VkDescriptorSet sets = r->vk.main_material.sets[r->vk.frame_idx];
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
@@ -402,28 +404,28 @@ bool draw_world(render_system_t *r) {
 
     /*
     re.vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                          sizeof(mat4), &mesh.model);
+                          sizeof(mat4), &bundle->model);
                           */
 
-    // geometry_gpu_t *data = &be->obj_data.geo[mesh.geometry->internal_id];
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
-    VkDeviceSize offset[1] = {0};
+    VkDeviceSize offset[1] = {bundle->geo->vertex_offset};
 
     /*
-    jnk_log_debug(CH_GFX,
-                  "vertex_offset=%llu index_offset=%llu index_count=%u "
-                  "stride=%zu",
-                  data->vertex_offset, data->index_offset, data->index_count,
-                  sizeof(vertex_3d));
-                  */
+    LOG_DEBUG("vertex_offset=%llu index_offset=%llu index_count=%u "
+              "stride=%zu",
+              bundle->geo->vertex_offset, bundle->geo->index_offset,
+              bundle->geo->index_count, sizeof(vertex_3d));
+              */
 
     re.vkCmdBindVertexBuffers(cmd, 0, 1, buff, offset);
-    re.vkCmdBindIndexBuffer(cmd, r->vk.index_buffer.handle, 0,
-                            VK_INDEX_TYPE_UINT32);
+    re.vkCmdBindIndexBuffer(cmd, r->vk.index_buffer.handle,
+                            bundle->geo->index_offset, VK_INDEX_TYPE_UINT32);
 
-    re.vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+    re.vkCmdDrawIndexed(cmd, bundle->geo->index_count, 1, 0, 0, 0);
     return true;
 }
+
+static void update_world(render_system_t *r) {}
 
 /************************************
  * STAGING BUFFER DATA
@@ -451,12 +453,15 @@ static void set_staging_data(render_system_t *r, vk_buffer_t *buffer,
  ************************************************************************/
 
 render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
+    if (g_re != NULL) return g_re;
+
     render_system_t *r = arena_alloc(arena, sizeof(render_system_t));
     if (!r) return NULL;
 
     memset(r, 0, sizeof(render_system_t));
     r->arena = arena;
     r->window = window;
+    // r->camera = get_main_camera();
 
     if (!core_init(&r->vk.core)) {
         LOG_FATAL("core render not initialized");
@@ -484,6 +489,7 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
                         "shaders/base");
 
+    /*
     { // TODO: Temporary code!!
         const uint32_t vertex_count = 4;
         vertex_3d vert_3d[vertex_count];
@@ -520,7 +526,9 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
                          r->vk.core.graphic_queue, 0, indices,
                          sizeof(uint32_t) * idx_count, RE_BUFFER_STAGING);
     }
+    */
 
+    g_re = r;
     LOG_INFO("render system initialized");
     return r;
 }
@@ -553,7 +561,7 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
             return false;
         }
 
-        draw_world(r);
+        draw_world(r, bundle);
 
         if (!end_pass(r)) {
             return false;
@@ -562,4 +570,43 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
         end_frame(r, bundle->delta);
     }
     return true;
+}
+
+void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
+                     const void *vert, uint32_t i_size, uint32_t i_count,
+                     const void *indices) {
+    geo->vertex_offset = g_re->vk.vertex_offset;
+    geo->vertex_count = v_count;
+    geo->vertex_size = v_size;
+    uint32_t total_size = v_size * v_count;
+
+    printf("[Vertex] offset=%u, count=%u, size=%u, total_bytes=%u\n",
+           geo->vertex_offset, geo->vertex_count, geo->vertex_size, total_size);
+
+    set_staging_data(g_re, &g_re->vk.vertex_buffer, g_re->vk.core.gfx_pool,
+                     g_re->vk.core.graphic_queue, geo->vertex_offset,
+                     (void *)vert, total_size, RE_BUFFER_STAGING);
+
+    g_re->vk.vertex_offset += total_size;
+
+    if (i_count && indices) {
+        geo->index_offset = g_re->vk.index_offset;
+        geo->index_count = i_count;
+        geo->index_size = i_size;
+        total_size = i_size * i_count;
+
+        printf("[Index]  offset=%u, count=%u, size=%u, total_bytes=%u\n",
+               geo->index_offset, geo->index_count, geo->index_size,
+               total_size);
+
+        set_staging_data(g_re, &g_re->vk.index_buffer, g_re->vk.core.gfx_pool,
+                         g_re->vk.core.graphic_queue, geo->index_offset,
+                         (void *)indices, total_size, RE_BUFFER_STAGING);
+
+        g_re->vk.index_offset += total_size;
+    }
+
+    // g_re->vk.geo_gpu = *geo;
+    // g_re->bundle.geo = &g_re->vk.geo_gpu;
+    // g_re->bundle.model = g_re->camera->world_view;
 }

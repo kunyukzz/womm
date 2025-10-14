@@ -3,9 +3,11 @@
 
 #include "core/define.h"
 #include "core/timer.h"
+#include "core/camera.h"
 
 typedef struct {
     timer_t timer;
+    camera_system_t *cam;
 
     bool is_running;
     bool is_suspend;

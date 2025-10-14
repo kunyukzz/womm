@@ -1487,7 +1487,7 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
                                      .attribute_count = 2,
                                      .vertex_stride = sizeof(vertex_3d)};
 
-    pipe_config_t world_config = {.wireframe = true,
+    pipe_config_t world_config = {.wireframe = false,
                                   .depth_test = true,
                                   .depth_write = true,
                                   .cull_mode = VK_CULL_MODE_BACK_BIT};
