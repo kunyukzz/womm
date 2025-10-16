@@ -1,7 +1,7 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include "define.h"
+#include "define.h" // IWYU pragma: keep
 #include "arena.h"
 #include "event.h"
 
@@ -159,19 +159,18 @@ void input_process_mouse_wheel(input_system_t *input, event_system_t *event,
                                int8_t delta_z);
 
 // keys
-bool key_press(const input_system_t *input, input_keys_t key);
-bool key_release(const input_system_t *input, input_keys_t key);
-bool key_was_pressed(const input_system_t *input, input_keys_t key);
-bool key_was_released(const input_system_t *input, input_keys_t key);
+bool key_press(input_keys_t key);
+bool key_release(input_keys_t key);
+bool key_was_pressed(input_keys_t key);
+bool key_was_released(input_keys_t key);
 
 // mouse
-bool button_press(const input_system_t *input, input_button_t button);
-bool button_release(const input_system_t *input, input_button_t button);
-bool button_was_pressed(const input_system_t *input, input_button_t button);
-bool button_was_released(const input_system_t *input, input_button_t button);
-void get_mouse_pos(const input_system_t *input, int32_t *pos_x, int32_t *pos_y);
-void get_mouse_prev_pos(const input_system_t *input, int32_t *pos_x,
-                        int32_t *pos_y);
+bool button_press(input_button_t button);
+bool button_release(input_button_t button);
+bool button_was_pressed(input_button_t button);
+bool button_was_released(input_button_t button);
+void get_mouse_pos(int32_t *pos_x, int32_t *pos_y);
+void get_mouse_prev_pos(int32_t *pos_x, int32_t *pos_y);
 
 // debug
 const char *keycode_to_str(input_keys_t key);

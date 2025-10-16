@@ -20,6 +20,4 @@ bool game_update(game_system_t *game, float delta);
 bool game_render(game_system_t *game, float delta);
 void game_kill(game_system_t *game);
 
-bool game_is_running(game_system_t *game);
-
 #endif // GAME_H

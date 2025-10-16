@@ -33,7 +33,7 @@ typedef struct {
 typedef struct {
     arena_alloc_t *arena;
     window_t *window;
-    camera_t *camera;
+    camera_system_t *camera;
 
     render_t vk;
     render_bundle_t bundle;

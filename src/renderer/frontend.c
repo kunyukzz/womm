@@ -1,7 +1,8 @@
 #include "frontend.h"
 #include "backend.h"
 #include "core/memory.h"
-#include "core/math/math_type.h"
+#include "core/math/maths.h"
+// #include "core/math/math_type.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -221,7 +222,7 @@ static void unset_framebuffer(render_system_t *r) {
 static bool set_object_buffer(render_system_t *r) {
     VkMemoryPropertyFlagBits mem_prop = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    const uint64_t vb_size_3d = sizeof(vertex_3d) * 1024 * 1024; // 32Mb
+    const uint32_t vb_size_3d = sizeof(vertex_3d) * 1024 * 1024; // 32Mb
     buffer_init(&r->vk.core, &r->vk.vertex_buffer,
                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -402,10 +403,8 @@ static bool draw_world(render_system_t *r, render_bundle_t *bundle) {
     re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                pipeline.layout, 0, 1, &sets, 0, 0);
 
-    /*
     re.vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                           sizeof(mat4), &bundle->model);
-                          */
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
     VkDeviceSize offset[1] = {bundle->geo->vertex_offset};
@@ -425,7 +424,20 @@ static bool draw_world(render_system_t *r, render_bundle_t *bundle) {
     return true;
 }
 
-static void update_world(render_system_t *r) {}
+static void update_world(render_system_t *r) {
+    // camera_update(r->camera);
+
+    if (!r->vk.main_material.buffers[r->vk.frame_idx].mapped) {
+        LOG_ERROR("UBO frame %u not mapped!", r->vk.frame_idx);
+        return;
+    }
+
+    r->vk.main_material.cam_ubo_data.proj = r->camera->main_cam.world_proj;
+    r->vk.main_material.cam_ubo_data.view = r->camera->main_cam.world_view;
+
+    memcpy(r->vk.main_material.buffers[r->vk.frame_idx].mapped,
+           &r->vk.main_material.cam_ubo_data, sizeof(vk_camera_data_t));
+}
 
 /************************************
  * STAGING BUFFER DATA
@@ -461,7 +473,7 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     memset(r, 0, sizeof(render_system_t));
     r->arena = arena;
     r->window = window;
-    // r->camera = get_main_camera();
+    r->camera = get_camera_system();
 
     if (!core_init(&r->vk.core)) {
         LOG_FATAL("core render not initialized");
@@ -487,7 +499,7 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     set_object_buffer(r);
 
     material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
-                        "shaders/base");
+                        "shaders/ubo");
 
     /*
     { // TODO: Temporary code!!
@@ -556,6 +568,7 @@ void render_system_kill(render_system_t *r) {
 
 bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
     if (begin_frame(r, bundle->delta)) {
+        update_world(r);
 
         if (!begin_pass(r)) {
             return false;
@@ -570,6 +583,17 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
         end_frame(r, bundle->delta);
     }
     return true;
+}
+
+void render_system_resize(uint32_t width, uint32_t height) {
+    if (g_re) {
+        camera_t cam = g_re->camera->main_cam;
+        float aspect = (float)width / (float)height;
+
+        g_re->camera->main_cam.world_proj =
+            mat4_column_perspective(deg_to_rad(cam.fov), aspect, cam.near,
+                                    cam.far);
+    }
 }
 
 void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
@@ -608,5 +632,5 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
 
     // g_re->vk.geo_gpu = *geo;
     // g_re->bundle.geo = &g_re->vk.geo_gpu;
-    // g_re->bundle.model = g_re->camera->world_view;
+    g_re->bundle.model = g_re->camera->main_cam.world_view;
 }

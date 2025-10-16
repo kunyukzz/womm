@@ -115,30 +115,31 @@ geo_cpu_t geo_create_plane(float width, float height, uint32_t seg_x,
     return geo;
 }
 
+/*
 bool default_geo_init(geometry_system_t *geo) {
     vertex_3d vert_3d[4];
     memset(vert_3d, 0, sizeof(vertex_3d) * 4);
-    const float f = 1.0f;
+    const float f = 10.0f;
 
-    /*** top left ***/
+    // top left
     vert_3d[0].position.comp1.x = -0.5f * f;
     vert_3d[0].position.comp1.y = 0.5f * f;
     vert_3d[0].texcoord.comp1.x = 0;
     vert_3d[0].texcoord.comp1.y = 0;
 
-    /*** top right ***/
+    // top right
     vert_3d[1].position.comp1.x = 0.5f * f;
     vert_3d[1].position.comp1.y = 0.5f * f;
     vert_3d[1].texcoord.comp1.x = 1;
     vert_3d[1].texcoord.comp1.y = 0;
 
-    /*** bottom right ***/
+    // bottom right
     vert_3d[2].position.comp1.x = 0.5f * f;
     vert_3d[2].position.comp1.y = -0.5f * f;
     vert_3d[2].texcoord.comp1.x = 1;
     vert_3d[2].texcoord.comp1.y = 1;
 
-    /*** bottom left ***/
+    // bottom left
     vert_3d[3].position.comp1.x = -0.5f * f;
     vert_3d[3].position.comp1.y = -0.5f * f;
     vert_3d[3].texcoord.comp1.x = 0;
@@ -148,5 +149,209 @@ bool default_geo_init(geometry_system_t *geo) {
 
     render_geo_init(&geo->default_geo, sizeof(vertex_3d), 4, vert_3d,
                     sizeof(uint32_t), 6, indices);
+    return true;
+}
+*/
+
+bool default_geo_init(geometry_system_t *geo) {
+    vertex_3d vert_3d[24];
+    memset(vert_3d, 0, sizeof(vertex_3d) * 24);
+    const float f = 5.0f;
+
+    { // FRONT FACE
+        // top left
+        vert_3d[0].position.comp1.x = -0.5f * f;
+        vert_3d[0].position.comp1.y = 0.5f * f;
+        vert_3d[0].position.comp1.z = 0.5f * f;
+        vert_3d[0].texcoord.comp1.x = 0;
+        vert_3d[0].texcoord.comp1.y = 0;
+
+        // top right
+        vert_3d[1].position.comp1.x = 0.5f * f;
+        vert_3d[1].position.comp1.y = 0.5f * f;
+        vert_3d[1].position.comp1.z = 0.5f * f;
+        vert_3d[1].texcoord.comp1.x = 1;
+        vert_3d[1].texcoord.comp1.y = 0;
+
+        // bottom right
+        vert_3d[2].position.comp1.x = 0.5f * f;
+        vert_3d[2].position.comp1.y = -0.5f * f;
+        vert_3d[2].position.comp1.z = 0.5f * f;
+        vert_3d[2].texcoord.comp1.x = 1;
+        vert_3d[2].texcoord.comp1.y = 1;
+
+        // bottom left
+        vert_3d[3].position.comp1.x = -0.5f * f;
+        vert_3d[3].position.comp1.y = -0.5f * f;
+        vert_3d[3].position.comp1.z = 0.5f * f;
+        vert_3d[3].texcoord.comp1.x = 0;
+        vert_3d[3].texcoord.comp1.y = 1;
+    }
+
+    { // BACK FACE
+        // top left
+        vert_3d[4].position.comp1.x = -0.5f * f;
+        vert_3d[4].position.comp1.y = 0.5f * f;
+        vert_3d[4].position.comp1.z = -0.5f * f;
+        vert_3d[4].texcoord.comp1.x = 1;
+        vert_3d[4].texcoord.comp1.y = 0;
+
+        // top right
+        vert_3d[5].position.comp1.x = 0.5f * f;
+        vert_3d[5].position.comp1.y = 0.5f * f;
+        vert_3d[5].position.comp1.z = -0.5f * f;
+        vert_3d[5].texcoord.comp1.x = 0;
+        vert_3d[5].texcoord.comp1.y = 0;
+
+        // bottom right
+        vert_3d[6].position.comp1.x = 0.5f * f;
+        vert_3d[6].position.comp1.y = -0.5f * f;
+        vert_3d[6].position.comp1.z = -0.5f * f;
+        vert_3d[6].texcoord.comp1.x = 0;
+        vert_3d[6].texcoord.comp1.y = 1;
+
+        // bottom left
+        vert_3d[7].position.comp1.x = -0.5f * f;
+        vert_3d[7].position.comp1.y = -0.5f * f;
+        vert_3d[7].position.comp1.z = -0.5f * f;
+        vert_3d[7].texcoord.comp1.x = 1;
+        vert_3d[7].texcoord.comp1.y = 1;
+    }
+
+    { // RIGHT FACE
+        // top left
+        vert_3d[8].position.comp1.x = 0.5f * f;
+        vert_3d[8].position.comp1.y = 0.5f * f;
+        vert_3d[8].position.comp1.z = 0.5f * f;
+        vert_3d[8].texcoord.comp1.x = 0;
+        vert_3d[8].texcoord.comp1.y = 0;
+
+        // top right
+        vert_3d[9].position.comp1.x = 0.5f * f;
+        vert_3d[9].position.comp1.y = 0.5f * f;
+        vert_3d[9].position.comp1.z = -0.5f * f;
+        vert_3d[9].texcoord.comp1.x = 1;
+        vert_3d[9].texcoord.comp1.y = 0;
+
+        // bottom right
+        vert_3d[10].position.comp1.x = 0.5f * f;
+        vert_3d[10].position.comp1.y = -0.5f * f;
+        vert_3d[10].position.comp1.z = -0.5f * f;
+        vert_3d[10].texcoord.comp1.x = 1;
+        vert_3d[10].texcoord.comp1.y = 1;
+
+        // bottom left
+        vert_3d[11].position.comp1.x = 0.5f * f;
+        vert_3d[11].position.comp1.y = -0.5f * f;
+        vert_3d[11].position.comp1.z = 0.5f * f;
+        vert_3d[11].texcoord.comp1.x = 0;
+        vert_3d[11].texcoord.comp1.y = 1;
+    }
+
+    { // LEFT FACE
+        // top left
+        vert_3d[12].position.comp1.x = -0.5f * f;
+        vert_3d[12].position.comp1.y = 0.5f * f;
+        vert_3d[12].position.comp1.z = -0.5f * f;
+        vert_3d[12].texcoord.comp1.x = 0;
+        vert_3d[12].texcoord.comp1.y = 0;
+
+        // top right
+        vert_3d[13].position.comp1.x = -0.5f * f;
+        vert_3d[13].position.comp1.y = 0.5f * f;
+        vert_3d[13].position.comp1.z = 0.5f * f;
+        vert_3d[13].texcoord.comp1.x = 1;
+        vert_3d[13].texcoord.comp1.y = 0;
+
+        // bottom right
+        vert_3d[14].position.comp1.x = -0.5f * f;
+        vert_3d[14].position.comp1.y = -0.5f * f;
+        vert_3d[14].position.comp1.z = 0.5f * f;
+        vert_3d[14].texcoord.comp1.x = 1;
+        vert_3d[14].texcoord.comp1.y = 1;
+
+        // bottom left
+        vert_3d[15].position.comp1.x = -0.5f * f;
+        vert_3d[15].position.comp1.y = -0.5f * f;
+        vert_3d[15].position.comp1.z = -0.5f * f;
+        vert_3d[15].texcoord.comp1.x = 0;
+        vert_3d[15].texcoord.comp1.y = 1;
+    }
+
+    { // TOP FACE
+        // top left
+        vert_3d[16].position.comp1.x = -0.5f * f;
+        vert_3d[16].position.comp1.y = 0.5f * f;
+        vert_3d[16].position.comp1.z = -0.5f * f;
+        vert_3d[16].texcoord.comp1.x = 0;
+        vert_3d[16].texcoord.comp1.y = 0;
+
+        // top right
+        vert_3d[17].position.comp1.x = 0.5f * f;
+        vert_3d[17].position.comp1.y = 0.5f * f;
+        vert_3d[17].position.comp1.z = -0.5f * f;
+        vert_3d[17].texcoord.comp1.x = 1;
+        vert_3d[17].texcoord.comp1.y = 0;
+
+        // bottom right
+        vert_3d[18].position.comp1.x = 0.5f * f;
+        vert_3d[18].position.comp1.y = 0.5f * f;
+        vert_3d[18].position.comp1.z = 0.5f * f;
+        vert_3d[18].texcoord.comp1.x = 1;
+        vert_3d[18].texcoord.comp1.y = 1;
+
+        // bottom left
+        vert_3d[19].position.comp1.x = -0.5f * f;
+        vert_3d[19].position.comp1.y = 0.5f * f;
+        vert_3d[19].position.comp1.z = 0.5f * f;
+        vert_3d[19].texcoord.comp1.x = 0;
+        vert_3d[19].texcoord.comp1.y = 1;
+    }
+
+    { // BOTTOM FACE
+        // top left
+        vert_3d[20].position.comp1.x = -0.5f * f;
+        vert_3d[20].position.comp1.y = -0.5f * f;
+        vert_3d[20].position.comp1.z = 0.5f * f;
+        vert_3d[20].texcoord.comp1.x = 0;
+        vert_3d[20].texcoord.comp1.y = 0;
+
+        // top right
+        vert_3d[21].position.comp1.x = 0.5f * f;
+        vert_3d[21].position.comp1.y = -0.5f * f;
+        vert_3d[21].position.comp1.z = 0.5f * f;
+        vert_3d[21].texcoord.comp1.x = 1;
+        vert_3d[21].texcoord.comp1.y = 0;
+
+        // bottom right
+        vert_3d[22].position.comp1.x = 0.5f * f;
+        vert_3d[22].position.comp1.y = -0.5f * f;
+        vert_3d[22].position.comp1.z = -0.5f * f;
+        vert_3d[22].texcoord.comp1.x = 1;
+        vert_3d[22].texcoord.comp1.y = 1;
+
+        // bottom left
+        vert_3d[23].position.comp1.x = -0.5f * f;
+        vert_3d[23].position.comp1.y = -0.5f * f;
+        vert_3d[23].position.comp1.z = -0.5f * f;
+        vert_3d[23].texcoord.comp1.x = 0;
+        vert_3d[23].texcoord.comp1.y = 1;
+    }
+
+    uint32_t indices[36] = {// Front face
+                            0, 1, 2, 0, 2, 3,
+                            // Back face
+                            4, 6, 5, 4, 7, 6,
+                            // Right face
+                            8, 9, 10, 8, 10, 11,
+                            // Left face
+                            12, 13, 14, 12, 14, 15,
+                            // Top face
+                            16, 17, 18, 16, 18, 19,
+                            // Bottom face
+                            20, 21, 22, 20, 22, 23};
+
+    render_geo_init(&geo->default_geo, sizeof(vertex_3d), 24, vert_3d,
+                    sizeof(uint32_t), 36, indices);
     return true;
 }

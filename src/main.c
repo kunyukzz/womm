@@ -20,7 +20,7 @@ typedef struct {
     window_system_t *window;
     event_system_t *event;
     input_system_t *input;
-    // camera_system_t *camera;
+    camera_system_t *camera;
     render_system_t *render;
     geometry_system_t *geo;
     game_system_t *game;
@@ -38,12 +38,12 @@ bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
 #if DEBUG
 static void system_log(void) {
     LOG_DEBUG("=== Memory Addresses ===");
-    LOG_DEBUG("Window:  %p", g_system.window);
-    LOG_DEBUG("Event:   %p", g_system.event);
-    LOG_DEBUG("Input:   %p", g_system.input);
-    // LOG_DEBUG("Camera:  %p", g_system.camera);
-    LOG_DEBUG("Render:  %p", g_system.render);
-    LOG_DEBUG("Geometry:%p", g_system.geo);
+    LOG_DEBUG("Window:    %p", g_system.window);
+    LOG_DEBUG("Event:     %p", g_system.event);
+    LOG_DEBUG("Input:     %p", g_system.input);
+    LOG_DEBUG("Camera:    %p", g_system.camera);
+    LOG_DEBUG("Render:    %p", g_system.render);
+    LOG_DEBUG("Geometry:  %p", g_system.geo);
 
     uint64_t used = arena_used(&g_system.persistent_arena);
     uint64_t total = g_system.persistent_arena.total_size;
@@ -82,19 +82,18 @@ static bool system_init(void) {
     g_system.event = event_system_init(&g_system.persistent_arena);
     g_system.input = input_system_init(&g_system.persistent_arena);
 
-    /*
     g_system.camera = camera_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
-                                         */
     g_system.render = render_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
 
     g_system.geo = geo_system_init(&g_system.persistent_arena);
     g_system.game = game_init();
 
+    // bundle initialize
     g_system.bundle.delta = g_system.game->delta;
     g_system.bundle.geo = &g_system.geo->default_geo;
-    // g_system.bundle.model = g_system.render->camera->world_view;
+    g_system.bundle.model = g_system.render->camera->main_cam.world_view;
 
 #if DEBUG
     system_log();
@@ -122,7 +121,7 @@ static void system_kill(void) {
 
     geo_system_kill(g_system.geo);
     render_system_kill(g_system.render);
-    // camera_system_kill(g_system.camera);
+    camera_system_kill(g_system.camera);
     input_system_kill(g_system.input);
     event_system_kill(g_system.event);
     window_system_kill(g_system.window);
@@ -180,7 +179,6 @@ int main(void) {
                 break;
             }
 
-            // TODO: dont hanging bundle like this!!
             render_system_draw(g_system.render, &g_system.bundle);
 
             double next_frame_time = frame_time_start + TARGET_FRAME_TIME;
@@ -279,7 +277,8 @@ bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
                 if (g_system.game->is_suspend) {
                     g_system.game->is_suspend = false;
                 }
-                // TODO: renderer_system_resize(w, h);
+                render_system_resize(g_system.window->native_win.width,
+                                     g_system.window->native_win.height);
             }
         }
     }

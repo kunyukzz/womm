@@ -1417,8 +1417,16 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
                     RE_BUFFER_UNIFORM);
 
         void *map = NULL;
-        CHECK_VK(re.vkMapMemory(core->logic_dvc, material->buffers[i].memory, 0,
-                                sizeof(vk_camera_data_t), 0, &map));
+        VkResult res =
+            re.vkMapMemory(core->logic_dvc, material->buffers[i].memory, 0,
+                           sizeof(vk_camera_data_t), 0, &map);
+
+        if (res == VK_SUCCESS) {
+            material->buffers[i].mapped = map;
+        } else {
+            material->buffers[i].mapped = NULL;
+            LOG_ERROR("Failed to map UBO buffer %u", i);
+        }
 
         VkDescriptorSetAllocateInfo alloc_info = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,

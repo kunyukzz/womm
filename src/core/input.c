@@ -25,6 +25,8 @@ struct input_system_t {
     mouse_state mouse_prev;
 };
 
+static input_system_t *g_ip = NULL;
+
 input_system_t *input_system_init(arena_alloc_t *arena) {
     input_system_t *input = arena_alloc(arena, sizeof(input_system_t));
     if (!input) return NULL;
@@ -32,6 +34,7 @@ input_system_t *input_system_init(arena_alloc_t *arena) {
     memset(input, 0, sizeof(input_system_t));
     input->arena = arena;
 
+    g_ip = input;
     LOG_INFO("input system initialized");
     return input;
 }
@@ -106,47 +109,41 @@ void input_process_mouse_wheel(input_system_t *input, event_system_t *event,
     }
 }
 
-bool key_press(const input_system_t *input, input_keys_t key) {
-    return input->kbd_curr.keys[key] == true;
+bool key_press(input_keys_t key) { return g_ip->kbd_curr.keys[key] == true; }
+
+bool key_release(input_keys_t key) { return g_ip->kbd_curr.keys[key] == false; }
+
+bool key_was_pressed(input_keys_t key) {
+    return g_ip->kbd_prev.keys[key] == true;
 }
 
-bool key_release(const input_system_t *input, input_keys_t key) {
-    return input->kbd_curr.keys[key] == false;
-}
-
-bool key_was_pressed(const input_system_t *input, input_keys_t key) {
-    return input->kbd_prev.keys[key] == true;
-}
-
-bool key_was_released(const input_system_t *input, input_keys_t key) {
-    return input->kbd_prev.keys[key] == false;
+bool key_was_released(input_keys_t key) {
+    return g_ip->kbd_prev.keys[key] == false;
 }
 
 // mouse
-bool button_press(const input_system_t *input, input_button_t button) {
-    return input->mouse_curr.buttons[button] == true;
+bool button_press(input_button_t button) {
+    return g_ip->mouse_curr.buttons[button] == true;
 }
 
-bool button_release(const input_system_t *input, input_button_t button) {
-    return input->mouse_curr.buttons[button] == false;
+bool button_release(input_button_t button) {
+    return g_ip->mouse_curr.buttons[button] == false;
 }
 
-bool button_was_pressed(const input_system_t *input, input_button_t button) {
-    return input->mouse_prev.buttons[button] == true;
+bool button_was_pressed(input_button_t button) {
+    return g_ip->mouse_prev.buttons[button] == true;
 }
 
-bool button_was_released(const input_system_t *input, input_button_t button) {
-    return input->mouse_prev.buttons[button] == false;
+bool button_was_released(input_button_t button) {
+    return g_ip->mouse_prev.buttons[button] == false;
 }
 
-void get_mouse_pos(const input_system_t *input, int32_t *pos_x,
-                   int32_t *pos_y) {
-    *pos_x = input->mouse_curr.pos_x;
-    *pos_y = input->mouse_curr.pos_y;
+void get_mouse_pos(int32_t *pos_x, int32_t *pos_y) {
+    *pos_x = g_ip->mouse_curr.pos_x;
+    *pos_y = g_ip->mouse_curr.pos_y;
 }
 
-void get_mouse_prev_pos(const input_system_t *input, int32_t *pos_x,
-                        int32_t *pos_y) {
-    *pos_x = input->mouse_prev.pos_x;
-    *pos_y = input->mouse_prev.pos_y;
+void get_mouse_prev_pos(int32_t *pos_x, int32_t *pos_y) {
+    *pos_x = g_ip->mouse_prev.pos_x;
+    *pos_y = g_ip->mouse_prev.pos_y;
 }
