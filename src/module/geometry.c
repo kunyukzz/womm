@@ -116,6 +116,57 @@ geo_cpu_t geo_create_plane(float width, float height, uint32_t seg_x,
 }
 
 /*
+geo_cpu_t geo_create_cube(float width, float height, float depth,
+                          uint32_t segment) {
+    if (width == 0) {
+        LOG_WARN("width must be non-ZERO. set to 1");
+        width = 1.0f;
+    }
+    if (height == 0) {
+        LOG_WARN("height must be non-ZERO. set to 1");
+        height = 1.0f;
+    }
+    if (depth == 0) {
+        LOG_WARN("height must be non-ZERO. set to 1");
+        depth = 1.0f;
+    }
+
+    geo_cpu_t geo;
+    geo.vertex_size = sizeof(vertex_3d);
+    geo.vertex_count = segment * 4 * 6;
+    geo.index_size = sizeof(uint32_t);
+    geo.index_count = segment * 6 * 6;
+    geo.vertices = WALLOC(sizeof(vertex_3d) * geo.vertex_count, MEM_ARRAY);
+    geo.indices = WALLOC(sizeof(uint32_t) * geo.index_count, MEM_ARRAY);
+
+    float sw = width / (float)segment;
+    float sh = height / (float)segment;
+    float sd = depth / (float)segment;
+    float hw = width * 0.5f;
+    float hh = height * 0.5f;
+    float hd = depth * 0.5f;
+    float tile_x = 1.0f;
+    float tile_y = 1.0f;
+    float tile_z = 1.0f;
+
+    float min_x = -hw;
+    float min_y = -hh;
+    float min_z = -hd;
+    float max_x = hw;
+    float max_y = hh;
+    float max_z = hd;
+
+    float min_uv_x = 0.0f;
+    float min_uv_y = 0.0f;
+    float max_uv_x = tile_x;
+    float max_uv_y = tile_y;
+
+    uint32_t offset = 0;
+    vertex_3d verts[24];
+
+    return geo;
+}
+
 bool default_geo_init(geometry_system_t *geo) {
     vertex_3d vert_3d[4];
     memset(vert_3d, 0, sizeof(vertex_3d) * 4);

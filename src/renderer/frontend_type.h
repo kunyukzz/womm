@@ -24,8 +24,21 @@ typedef struct {
 } geo_cpu_t;
 
 typedef struct {
+    char name[64];
+    vec4 color;
+    char texture_path[256];
+    bool has_texture;
+} material_data_t;
+
+#define MAX_GEO 10
+
+typedef struct {
     geo_gpu_t *geo;
     mat4 model;
+} object_bundle_t;
+
+typedef struct {
+    object_bundle_t obj[MAX_GEO];
     float delta;
 } render_bundle_t;
 

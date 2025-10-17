@@ -4,6 +4,7 @@
 #include "core/define.h" // IWYU pragma: keep
 #include "loader.h"
 #include "core/math/math_type.h"
+#include "frontend_type.h"
 
 #define FRAME_FLIGHT 2
 
@@ -108,14 +109,24 @@ typedef struct {
 } vk_pipeline_t;
 
 typedef struct {
+    material_data_t data;
+
     vk_camera_data_t cam_ubo_data;
+
     vk_buffer_t buffers[FRAME_FLIGHT];
     vk_shader_t shaders;
     vk_pipeline_t pipelines;
 
-    VkDescriptorSet sets[FRAME_FLIGHT];
-    VkDescriptorPool pool;
-    VkDescriptorSetLayout layout;
+    VkDescriptorSet global_sets[FRAME_FLIGHT];
+    VkDescriptorPool global_pool;
+    VkDescriptorSetLayout global_layout;
+
+    vk_buffer_t obj_buffers;
+    VkDescriptorPool object_pool;
+    VkDescriptorSetLayout object_layout;
+
+    VkImageView diffuse_map;
+    VkSampler sampler;
 } vk_material_t;
 
 /************************************

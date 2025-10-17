@@ -1394,7 +1394,8 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
         .pBindings = &ubo_binding,
     };
     CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &layout_info,
-                                            core->alloc, &material->layout));
+                                            core->alloc,
+                                            &material->global_layout));
 
     VkDescriptorPoolSize pool_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                                       .descriptorCount = FRAME_FLIGHT};
@@ -1406,7 +1407,7 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
         .pPoolSizes = &pool_size,
     };
     CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &pool_info, core->alloc,
-                                       &material->pool));
+                                       &material->global_pool));
 
     for (uint16_t i = 0; i < FRAME_FLIGHT; ++i) {
         buffer_init(core, &material->buffers[i],
@@ -1430,13 +1431,13 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
 
         VkDescriptorSetAllocateInfo alloc_info = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = material->pool,
+            .descriptorPool = material->global_pool,
             .descriptorSetCount = 1,
-            .pSetLayouts = &material->layout,
+            .pSetLayouts = &material->global_layout,
         };
 
         CHECK_VK(re.vkAllocateDescriptorSets(core->logic_dvc, &alloc_info,
-                                             &material->sets[i]));
+                                             &material->global_sets[i]));
 
         VkDescriptorBufferInfo buffer_info = {.buffer =
                                                   material->buffers[i].handle,
@@ -1446,7 +1447,7 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
 
         VkWriteDescriptorSet descriptor_write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = material->sets[i],
+            .dstSet = material->global_sets[i],
             .dstBinding = 0,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1487,7 +1488,7 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
 
     vk_pipeline_desc_t world_desc = {.stages = stages,
                                      .stage_count = 2,
-                                     .desc_layouts = &material->layout,
+                                     .desc_layouts = &material->global_layout,
                                      .desc_layout_count = 1,
                                      .push_consts = push_constants,
                                      .push_constant_count = 1,
@@ -1513,16 +1514,16 @@ void material_kill(vk_core_t *core, vk_material_t *material) {
         buffer_kill(core, &material->buffers[i], mem_prop, RE_BUFFER_UNIFORM);
     }
 
-    if (material->pool) {
-        re.vkDestroyDescriptorPool(core->logic_dvc, material->pool,
+    if (material->global_pool) {
+        re.vkDestroyDescriptorPool(core->logic_dvc, material->global_pool,
                                    core->alloc);
-        material->pool = VK_NULL_HANDLE;
+        material->global_pool = VK_NULL_HANDLE;
     }
 
-    if (material->layout) {
-        re.vkDestroyDescriptorSetLayout(core->logic_dvc, material->layout,
-                                        core->alloc);
-        material->layout = VK_NULL_HANDLE;
+    if (material->global_layout) {
+        re.vkDestroyDescriptorSetLayout(core->logic_dvc,
+                                        material->global_layout, core->alloc);
+        material->global_layout = VK_NULL_HANDLE;
     }
 
     unset_shader(core, material);

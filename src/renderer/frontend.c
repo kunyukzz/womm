@@ -2,6 +2,7 @@
 #include "backend.h"
 #include "core/memory.h"
 #include "core/math/maths.h"
+#include "core/binary_loader.h"
 // #include "core/math/math_type.h"
 
 #include <string.h>
@@ -255,6 +256,76 @@ static void unset_object_buffer(render_system_t *r) {
 }
 
 /************************************
+ * MATERIAL SET
+ ************************************/
+/*
+static bool set_material(render_system_t *r, const char *path) {
+    char ext_path[MAX_PATH];
+    snprintf(ext_path, sizeof(ext_path), "%s.mat", path);
+
+    uint64_t size = 0;
+    char *text = read_file_text(ext_path, &size);
+    if (!text) return false;
+
+    r->vk.main_material.data.diffuse_color = (vec4){{1, 1, 1, 1}};
+    r->vk.main_material.data.has_texture = 0;
+
+    material_t *mat = &r->vk.main_material;
+    char *line = text;
+    while (line && *line) {
+        char *next = strchr(line, '\n');
+        if (next) *next++ = 0;
+
+        if (strncmp(line, "name=", 5) == 0) {
+            strncpy(mat->data.name, line + 5, sizeof(mat->data.name) - 1);
+            mat->data.name[sizeof(mat->data.name) - 1] = '\0';
+        } else if (strncmp(line, "color=", 6) == 0) {
+            if (sscanf(line + 6, "%f %f %f %f",
+                       &mat->data.diffuse_color.comp1.x,
+                       &mat->data.diffuse_color.comp1.y,
+                       &mat->data.diffuse_color.comp1.z,
+                       &mat->data.diffuse_color.comp1.w) != 4) {
+                LOG_WARN("Invalid color in material '%s'", mat->data.name);
+            }
+        } else if (strncmp(line, "texture=", 8) == 0) {
+            strncpy(mat->data.diffuse_map_name, line + 8,
+                    sizeof(mat->data.diffuse_map_name) - 1);
+            mat->data.diffuse_map_name[sizeof(mat->data.diffuse_map_name) - 1] =
+                '\0';
+            mat->data.has_texture = 1;
+        }
+        line = next;
+    }
+
+    WFREE(text, size + 1, MEM_RESOURCE);
+    LOG_INFO("Material CPU loaded: %s (texture=%s)", mat->data.name,
+             mat->data.has_texture ? mat->data.diffuse_map_name : "none");
+
+    if (!material_world_init(&r->vk.core, &r->vk.main_material.mat,
+                             &r->vk.main_pass, "shaders/ubo")) {
+        LOG_ERROR("Failed to init Vulkan material for %s", mat->data.name);
+        return false;
+    }
+
+if (mat->data.has_texture) {
+    char tex_path[MAX_PATH];
+    snprintf(tex_path, sizeof(tex_path), "textures/%s.png",
+             mat->data.diffuse_map_name);
+
+    if (!texture_load(&r->vk.core, tex_path, &mat->diffuse_map,
+                      &mat->sampler)) {
+        LOG_WARN("Failed to load texture '%s', using color only", tex_path);
+        mat->data.has_texture = 0;
+    }
+}
+
+    LOG_INFO("Material fully loaded: %s (texture=%s)", mat->data.name,
+             mat->data.has_texture ? mat->data.diffuse_map_name : "none");
+    return true;
+}
+*/
+
+/************************************
  * INTERNAL FRAME
  ************************************/
 static bool begin_frame(render_system_t *r, float delta) {
@@ -393,8 +464,10 @@ static bool end_pass(render_system_t *r) {
 /************************************
  * DRAW CALL
  ************************************/
-static bool draw_world(render_system_t *r, render_bundle_t *bundle) {
-    VkDescriptorSet sets = r->vk.main_material.sets[r->vk.frame_idx];
+static void draw_world(render_system_t *r, object_bundle_t *obj) {
+    if (!obj->geo) return;
+
+    VkDescriptorSet sets = r->vk.main_material.global_sets[r->vk.frame_idx];
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
 
@@ -404,10 +477,10 @@ static bool draw_world(render_system_t *r, render_bundle_t *bundle) {
                                pipeline.layout, 0, 1, &sets, 0, 0);
 
     re.vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                          sizeof(mat4), &bundle->model);
+                          sizeof(mat4), &obj->model);
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
-    VkDeviceSize offset[1] = {bundle->geo->vertex_offset};
+    VkDeviceSize offset[] = {obj->geo->vertex_offset};
 
     /*
     LOG_DEBUG("vertex_offset=%llu index_offset=%llu index_count=%u "
@@ -418,15 +491,12 @@ static bool draw_world(render_system_t *r, render_bundle_t *bundle) {
 
     re.vkCmdBindVertexBuffers(cmd, 0, 1, buff, offset);
     re.vkCmdBindIndexBuffer(cmd, r->vk.index_buffer.handle,
-                            bundle->geo->index_offset, VK_INDEX_TYPE_UINT32);
+                            obj->geo->index_offset, VK_INDEX_TYPE_UINT32);
 
-    re.vkCmdDrawIndexed(cmd, bundle->geo->index_count, 1, 0, 0, 0);
-    return true;
+    re.vkCmdDrawIndexed(cmd, obj->geo->index_count, 1, 0, 0, 0);
 }
 
 static void update_world(render_system_t *r) {
-    // camera_update(r->camera);
-
     if (!r->vk.main_material.buffers[r->vk.frame_idx].mapped) {
         LOG_ERROR("UBO frame %u not mapped!", r->vk.frame_idx);
         return;
@@ -500,6 +570,7 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
 
     material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
                         "shaders/ubo");
+    // set_material(r, "materials/default");
 
     /*
     { // TODO: Temporary code!!
@@ -574,7 +645,9 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
             return false;
         }
 
-        draw_world(r, bundle);
+        for (uint32_t i = 0; i < MAX_GEO; ++i) {
+            draw_world(r, &bundle->obj[i]);
+        }
 
         if (!end_pass(r)) {
             return false;
@@ -629,8 +702,4 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
 
         g_re->vk.index_offset += total_size;
     }
-
-    // g_re->vk.geo_gpu = *geo;
-    // g_re->bundle.geo = &g_re->vk.geo_gpu;
-    g_re->bundle.model = g_re->camera->main_cam.world_view;
 }
