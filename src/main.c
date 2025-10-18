@@ -93,16 +93,16 @@ static bool system_init(void) {
 
     // bundle initialize
     g_system.bundle.delta = g_system.game->delta;
-    // g_system.bundle.geo = &g_system.geo->default_geo;
-    // g_system.bundle.model = g_system.render->camera->main_cam.world_view;
 
     g_system.bundle.obj[0].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[0].model =
         mat4_translate((vec3){{-5.0f, 0.0f, 0.0f, 0}});
+    g_system.bundle.obj[0].diffuse_color = (vec4){{1.0f, 0.0f, 0.0f, 1.0f}};
 
     g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[1].model =
         mat4_translate((vec3){{5.0f, 0.0f, 0.0f, 0}});
+    g_system.bundle.obj[1].diffuse_color = (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
 
 #if DEBUG
     system_log();

@@ -122,6 +122,7 @@ typedef struct {
     VkDescriptorSetLayout global_layout;
 
     vk_buffer_t obj_buffers;
+    VkDescriptorSet object_set;
     VkDescriptorPool object_pool;
     VkDescriptorSetLayout object_layout;
 

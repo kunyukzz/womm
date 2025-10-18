@@ -117,7 +117,7 @@ void pipeline_kill(vk_core_t *core, vk_pipeline_t *pipeline);
 /************************************
  * MATERIAL
  ************************************/
-bool material_world_init(vk_core_t *core, vk_material_t *material,
-                         vk_renderpass_t *rpass, const char *shader_name);
+bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
+                         vk_material_t *mat, const char *shader_name);
 
 void material_kill(vk_core_t *core, vk_material_t *material);

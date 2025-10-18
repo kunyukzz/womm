@@ -26,7 +26,7 @@ typedef struct {
 typedef struct {
     char name[64];
     vec4 color;
-    char texture_path[256];
+    char texture_name[64];
     bool has_texture;
 } material_data_t;
 
@@ -35,6 +35,7 @@ typedef struct {
 typedef struct {
     geo_gpu_t *geo;
     mat4 model;
+    vec4 diffuse_color;
 } object_bundle_t;
 
 typedef struct {

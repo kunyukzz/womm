@@ -467,17 +467,20 @@ static bool end_pass(render_system_t *r) {
 static void draw_world(render_system_t *r, object_bundle_t *obj) {
     if (!obj->geo) return;
 
-    VkDescriptorSet sets = r->vk.main_material.global_sets[r->vk.frame_idx];
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
-
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
-    re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                               pipeline.layout, 0, 1, &sets, 0, 0);
+    // TODO: Temporary code!!
+    struct {
+        mat4 model;
+        vec4 diffuse_color;
+    } push = {.model = obj->model, .diffuse_color = obj->diffuse_color};
 
-    re.vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
-                          sizeof(mat4), &obj->model);
+    re.vkCmdPushConstants(cmd, pipeline.layout,
+                          VK_SHADER_STAGE_VERTEX_BIT |
+                              VK_SHADER_STAGE_FRAGMENT_BIT,
+                          0, sizeof(push), &push);
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
     VkDeviceSize offset[] = {obj->geo->vertex_offset};
@@ -494,6 +497,16 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
                             obj->geo->index_offset, VK_INDEX_TYPE_UINT32);
 
     re.vkCmdDrawIndexed(cmd, obj->geo->index_count, 1, 0, 0, 0);
+}
+
+static void apply_world(render_system_t *r) {
+    VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
+    VkDescriptorSet sets = r->vk.main_material.global_sets[r->vk.frame_idx];
+    vk_pipeline_t pipeline = r->vk.main_material.pipelines;
+
+    pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
+    re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                               pipeline.layout, 0, 1, &sets, 0, 0);
 }
 
 static void update_world(render_system_t *r) {
@@ -568,11 +581,14 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     set_framebuffer(r);
     set_object_buffer(r);
 
+    material_world_init(&r->vk.core, &r->vk.main_pass, &r->vk.main_material,
+                        "shaders/ubo");
+
+    /*
     material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
                         "shaders/ubo");
     // set_material(r, "materials/default");
 
-    /*
     { // TODO: Temporary code!!
         const uint32_t vertex_count = 4;
         vertex_3d vert_3d[vertex_count];
@@ -642,14 +658,18 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
         update_world(r);
 
         if (!begin_pass(r)) {
+            LOG_ERROR("cannot do begin pass");
             return false;
         }
+
+        apply_world(r);
 
         for (uint32_t i = 0; i < MAX_GEO; ++i) {
             draw_world(r, &bundle->obj[i]);
         }
 
         if (!end_pass(r)) {
+            LOG_ERROR("cannot do end pass");
             return false;
         }
 

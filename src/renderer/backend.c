@@ -495,7 +495,6 @@ void re_memfree(vk_core_t *core, VkDeviceMemory memory,
 /************************************
  * SWAPCHAIN
  ************************************/
-
 static bool create_surface(vk_swapchain_t *swp, vk_core_t *core,
                            window_t *window) {
     if (swp->surface != VK_NULL_HANDLE) return true;
@@ -1378,103 +1377,109 @@ static void unset_shader(vk_core_t *core, vk_material_t *material) {
     }
 }
 
-bool material_world_init(vk_core_t *core, vk_material_t *material,
-                         vk_renderpass_t *rpass, const char *shader_name) {
-    if (!set_shader(core, material, shader_name)) return false;
+static bool set_material_texture(vk_material_t *mat, const char *path) {
+    char ext_path[MAX_PATH];
+    snprintf(ext_path, sizeof(ext_path), "%s.mat", path);
 
-    VkDescriptorSetLayoutBinding ubo_binding = {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-    };
-    VkDescriptorSetLayoutCreateInfo layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &ubo_binding,
-    };
-    CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &layout_info,
-                                            core->alloc,
-                                            &material->global_layout));
+    uint64_t size = 0;
+    char *text = read_file_text(ext_path, &size);
+    if (!text) return false;
 
-    VkDescriptorPoolSize pool_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                      .descriptorCount = FRAME_FLIGHT};
+    char *line = text;
+    while (line && *line) {
+        char *next = strchr(line, '\n');
+        if (next) *next++ = 0;
 
-    VkDescriptorPoolCreateInfo pool_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = FRAME_FLIGHT,
-        .poolSizeCount = 1,
-        .pPoolSizes = &pool_size,
-    };
-    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &pool_info, core->alloc,
-                                       &material->global_pool));
+        if (strncmp(line, "name=", 5) == 0) {
+            strncpy(mat->data.name, line + 5, sizeof(mat->data.name) - 1);
+            mat->data.name[sizeof(mat->data.name) - 1] = '\0';
+        } else if (strncmp(line, "color=", 6) == 0) {
+            if (sscanf(line + 6, "%f %f %f %f", &mat->data.color.comp1.x,
+                       &mat->data.color.comp1.y, &mat->data.color.comp1.z,
+                       &mat->data.color.comp1.w) != 4) {
+                LOG_WARN("Invalid color in material '%s'", mat->data.name);
+            }
+        } else if (strncmp(line, "texture=", 8) == 0) {
+            strncpy(mat->data.texture_name, line + 8,
+                    sizeof(mat->data.texture_name) - 1);
+            mat->data.texture_name[sizeof(mat->data.texture_name) - 1] = '\0';
+            mat->data.has_texture = 1;
+        }
+        line = next;
+    }
 
-    for (uint16_t i = 0; i < FRAME_FLIGHT; ++i) {
-        buffer_init(core, &material->buffers[i],
-                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                    sizeof(vk_camera_data_t),
-                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                    RE_BUFFER_UNIFORM);
+    WFREE(text, size + 1, MEM_RESOURCE);
+    LOG_INFO("Material CPU loaded: %s (texture=%s)", mat->data.name,
+             mat->data.has_texture ? mat->data.texture_name : "none");
 
+    return true;
+}
+
+static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
+    for (uint32_t i = 0; i < FRAME_FLIGHT; i++) {
         void *map = NULL;
-        VkResult res =
-            re.vkMapMemory(core->logic_dvc, material->buffers[i].memory, 0,
-                           sizeof(vk_camera_data_t), 0, &map);
+        VkResult res = re.vkMapMemory(core->logic_dvc, mat->buffers[i].memory,
+                                      0, sizeof(vk_camera_data_t), 0, &map);
 
         if (res == VK_SUCCESS) {
-            material->buffers[i].mapped = map;
+            mat->buffers[i].mapped = map;
         } else {
-            material->buffers[i].mapped = NULL;
+            mat->buffers[i].mapped = NULL;
             LOG_ERROR("Failed to map UBO buffer %u", i);
         }
 
         VkDescriptorSetAllocateInfo alloc_info = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = material->global_pool,
+            .descriptorPool = mat->global_pool,
             .descriptorSetCount = 1,
-            .pSetLayouts = &material->global_layout,
+            .pSetLayouts = &mat->global_layout,
         };
 
-        CHECK_VK(re.vkAllocateDescriptorSets(core->logic_dvc, &alloc_info,
-                                             &material->global_sets[i]));
+        if (re.vkAllocateDescriptorSets(core->logic_dvc, &alloc_info,
+                                        &mat->global_sets[i]) != VK_SUCCESS) {
+            LOG_ERROR("Failed to allocate global descriptor set %u", i);
+            return false;
+        }
 
-        VkDescriptorBufferInfo buffer_info = {.buffer =
-                                                  material->buffers[i].handle,
+        VkDescriptorBufferInfo buffer_info = {.buffer = mat->buffers[i].handle,
                                               .offset = 0,
                                               .range =
                                                   sizeof(vk_camera_data_t)};
 
         VkWriteDescriptorSet descriptor_write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = material->global_sets[i],
+            .dstSet = mat->global_sets[i],
             .dstBinding = 0,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .pBufferInfo = &buffer_info,
         };
+
         re.vkUpdateDescriptorSets(core->logic_dvc, 1, &descriptor_write, 0,
                                   NULL);
     }
 
+    return true;
+}
+
+static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
+                                  vk_renderpass_t *rpass) {
     VkPipelineShaderStageCreateInfo stages[2] =
-        {{
-             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-             .module = material->shaders.vert,
-             .pName = material->shaders.entry_point,
-         },
-         {
-             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-             .module = material->shaders.frag,
-             .pName = material->shaders.entry_point,
-         }};
+        {{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .module = mat->shaders.vert,
+          .pName = mat->shaders.entry_point},
+         {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+          .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .module = mat->shaders.frag,
+          .pName = mat->shaders.entry_point}};
 
     VkPushConstantRange push_constants[] = {
-        {.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        {.stageFlags =
+             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
          .offset = 0,
-         .size = sizeof(mat4)}};
+         .size = sizeof(mat4) + sizeof(vec4)},
+    };
 
     VkVertexInputAttributeDescription attrs[] =
         {{.location = 0,
@@ -1486,23 +1491,78 @@ bool material_world_init(vk_core_t *core, vk_material_t *material,
           .format = VK_FORMAT_R32G32_SFLOAT,
           .offset = offsetof(vertex_3d, texcoord)}};
 
-    vk_pipeline_desc_t world_desc = {.stages = stages,
-                                     .stage_count = 2,
-                                     .desc_layouts = &material->global_layout,
-                                     .desc_layout_count = 1,
-                                     .push_consts = push_constants,
-                                     .push_constant_count = 1,
-                                     .attrs = attrs,
-                                     .attribute_count = 2,
-                                     .vertex_stride = sizeof(vertex_3d)};
+    VkDescriptorSetLayout layouts[1] = {mat->global_layout};
 
-    pipe_config_t world_config = {.wireframe = false,
-                                  .depth_test = true,
-                                  .depth_write = true,
-                                  .cull_mode = VK_CULL_MODE_BACK_BIT};
+    vk_pipeline_desc_t pipeline_desc = {.stages = stages,
+                                        .stage_count = 2,
+                                        .desc_layouts = layouts,
+                                        .desc_layout_count = 1,
+                                        .push_consts = push_constants,
+                                        .push_constant_count = 1,
+                                        .attrs = attrs,
+                                        .attribute_count = 2,
+                                        .vertex_stride = sizeof(vertex_3d)};
 
-    return pipeline_init(core, &material->pipelines, rpass, &world_desc,
-                         world_config);
+    pipe_config_t config = {.wireframe = false,
+                            .depth_test = true,
+                            .depth_write = true,
+                            .cull_mode = VK_CULL_MODE_BACK_BIT};
+
+    if (!pipeline_init(core, &mat->pipelines, rpass, &pipeline_desc, config)) {
+        LOG_ERROR("Pipeline cannot be created");
+        return false;
+    }
+
+    return true;
+}
+
+bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
+                         vk_material_t *mat, const char *shader_name) {
+    memset(mat, 0, sizeof(vk_material_t));
+    if (!set_shader(core, mat, shader_name)) return false;
+
+    VkDescriptorSetLayoutBinding glob_binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    };
+    VkDescriptorSetLayoutCreateInfo glob_layout = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &glob_binding,
+    };
+    CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &glob_layout,
+                                            core->alloc, &mat->global_layout));
+
+    VkDescriptorPoolSize glob_pool = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = FRAME_FLIGHT};
+
+    VkDescriptorPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = FRAME_FLIGHT,
+        .poolSizeCount = 1,
+        .pPoolSizes = &glob_pool,
+    };
+    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &pool_info, core->alloc,
+                                       &mat->global_pool));
+
+    for (uint32_t i = 0; i < FRAME_FLIGHT; i++) {
+        if (!buffer_init(core, &mat->buffers[i],
+                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                         sizeof(vk_camera_data_t),
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         RE_BUFFER_UNIFORM)) {
+            LOG_ERROR("Failed to create camera buffer %u", i);
+            return false;
+        }
+    }
+
+    set_material_descriptors(core, mat);
+    set_material_pipeline(core, mat, rpass);
+
+    return true;
 }
 
 void material_kill(vk_core_t *core, vk_material_t *material) {
