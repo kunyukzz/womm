@@ -11,7 +11,8 @@ static const char *tag_str[MEM_MAX_TAG] = {"MEM_UNKNOWN", "MEM_ENGINE",
                                            "MEM_GAME",    "MEM_ARENA",
                                            "MEM_RENDER",  "MEM_AUDIO",
                                            "MEM_ARRAY",   "MEM_DYNARRAY",
-                                           "MEM_STRING",  "MEM_RESOURCE"};
+                                           "MEM_STRING",  "MEM_RESOURCE",
+                                           "MEM_TEXTURE"};
 
 struct status {
     uint64_t total_allocated;

@@ -31,6 +31,14 @@ bool image_init(vk_image_t *out, vk_core_t *core, VkFormat format,
 
 void image_kill(vk_image_t *image, vk_core_t *core, vram_tag_t tag);
 
+void image_transition_layout(vk_core_t *core, vk_cmdbuffer_t *cmd,
+                             vk_image_t *image, VkFormat *format,
+                             VkImageLayout old_layout,
+                             VkImageLayout new_layout);
+
+void image_copy_buffer(vk_core_t *core, vk_image_t *image, VkBuffer buffer,
+                       vk_cmdbuffer_t *cmd);
+
 /************************************
  * RENDERPASS
  ************************************/

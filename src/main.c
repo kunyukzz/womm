@@ -2,11 +2,13 @@
 #include "core/event.h"
 #include "core/input.h"
 #include "core/memory.h"
+#include "core/math/maths.h"
 #include "platform/filesystem.h"
 #include "renderer/frontend.h"
 #include "module/geometry.h"
+#include "module/material.h"
+#include "module/texture.h"
 #include "game/game.h"
-#include "core/math/maths.h"
 
 #include <stdio.h>
 
@@ -24,6 +26,8 @@ typedef struct {
     camera_system_t *camera;
     render_system_t *render;
     geometry_system_t *geo;
+    // texture_system_t *tex;
+    material_system_t *mat;
     game_system_t *game;
 } system_t;
 
@@ -45,6 +49,8 @@ static void system_log(void) {
     LOG_DEBUG("Camera:    %p", g_system.camera);
     LOG_DEBUG("Render:    %p", g_system.render);
     LOG_DEBUG("Geometry:  %p", g_system.geo);
+    // LOG_DEBUG("Texture:   %p", g_system.tex);
+    LOG_DEBUG("Material:  %p", g_system.mat);
 
     uint64_t used = arena_used(&g_system.persistent_arena);
     uint64_t total = g_system.persistent_arena.total_size;
@@ -89,6 +95,8 @@ static bool system_init(void) {
                                          &g_system.window->native_win);
 
     g_system.geo = geo_system_init(&g_system.persistent_arena);
+    // g_system.tex = texture_system_init(&g_system.persistent_arena);
+    g_system.mat = material_system_init(&g_system.persistent_arena);
     g_system.game = game_init();
 
     // bundle initialize
@@ -97,12 +105,14 @@ static bool system_init(void) {
     g_system.bundle.obj[0].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[0].model =
         mat4_translate((vec3){{-5.0f, 0.0f, 0.0f, 0}});
-    g_system.bundle.obj[0].diffuse_color = (vec4){{1.0f, 0.0f, 0.0f, 1.0f}};
+    g_system.bundle.obj[0].material.diffuse_color =
+        (vec4){{0.5f, 0.7f, 0.0f, 0.0f}};
 
     g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[1].model =
         mat4_translate((vec3){{5.0f, 0.0f, 0.0f, 0}});
-    g_system.bundle.obj[1].diffuse_color = (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
+    g_system.bundle.obj[1].material.diffuse_color =
+        (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
 
 #if DEBUG
     system_log();
@@ -128,6 +138,8 @@ static void system_kill(void) {
     event_unreg(g_system.event, EVENT_KEY_PRESS, game_on_input, NULL);
     event_unreg(g_system.event, EVENT_KEY_RELEASE, game_on_input, NULL);
 
+    material_system_kill(g_system.mat);
+    // texture_system_kill(g_system.tex);
     geo_system_kill(g_system.geo);
     render_system_kill(g_system.render);
     camera_system_kill(g_system.camera);

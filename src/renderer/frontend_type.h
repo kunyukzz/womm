@@ -24,9 +24,27 @@ typedef struct {
 } geo_cpu_t;
 
 typedef struct {
+    uint32_t width;
+    uint32_t height;
+    uint32_t channels;
     char name[64];
-    vec4 color;
-    char texture_name[64];
+
+    void *data_internal; // this for pointing to internal vulkan
+} texture_data_t;
+
+typedef enum {
+    MATERIAL_WORLD,
+
+    // for later
+    MATERIAL_UI,
+    MATERIAL_EFFECT,
+    MATERIAL_PBR
+} material_type_t;
+
+typedef struct {
+    // char name[64];
+    vec4 diffuse_color;
+    // texture_data_t *tex;
     bool has_texture;
 } material_data_t;
 
@@ -35,7 +53,7 @@ typedef struct {
 typedef struct {
     geo_gpu_t *geo;
     mat4 model;
-    vec4 diffuse_color;
+    material_data_t material;
 } object_bundle_t;
 
 typedef struct {

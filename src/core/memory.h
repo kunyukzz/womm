@@ -14,6 +14,7 @@ typedef enum {
     MEM_DYNARRAY,
     MEM_STRING,
     MEM_RESOURCE,
+    MEM_TEXTURE,
     MEM_MAX_TAG
 } memtag_t;
 

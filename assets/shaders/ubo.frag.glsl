@@ -1,9 +1,9 @@
+// Fragment GLSL
 #version 420
 layout(location = 0) in vec3 frag_Color;
 layout(location = 0) out vec4 out_Color;
 
-layout(push_constant) uniform Push {
-	mat4 model;
+layout(set = 1, binding = 0) uniform Push {
 	vec4 diffuse_color; // using color
 } pc;
 

@@ -863,6 +863,64 @@ void image_kill(vk_image_t *image, vk_core_t *core, vram_tag_t tag) {
     image->size = 0;
 }
 
+void image_transition_layout(vk_core_t *core, vk_cmdbuffer_t *cmd,
+                             vk_image_t *image, VkFormat *format,
+                             VkImageLayout old_layout,
+                             VkImageLayout new_layout) {
+    (void)format;
+    VkImageMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = (uint32_t)core->graphic_idx;
+    barrier.dstQueueFamilyIndex = (uint32_t)core->graphic_idx;
+    barrier.image = image->handle;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkPipelineStageFlags src_stage;
+    VkPipelineStageFlags dst_stage;
+
+    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED &&
+        new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+               new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        LOG_FATAL("Unsupported layout transition");
+        return;
+    }
+
+    re.vkCmdPipelineBarrier(cmd->handle, src_stage, dst_stage, 0, 0, 0, 0, 0, 1,
+                            &barrier);
+}
+
+void image_copy_buffer(vk_core_t *core, vk_image_t *image, VkBuffer buffer,
+                       vk_cmdbuffer_t *cmd) {
+    (void)core;
+    VkBufferImageCopy region;
+    memset(&region, 0, sizeof(VkBufferImageCopy));
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.layerCount = 1;
+    region.imageExtent.width = image->width;
+    region.imageExtent.height = image->height;
+    region.imageExtent.depth = 1;
+
+    re.vkCmdCopyBufferToImage(cmd->handle, buffer, image->handle,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+}
+
 /************************************
  * RENDERPASS
  ************************************/
@@ -1377,6 +1435,7 @@ static void unset_shader(vk_core_t *core, vk_material_t *material) {
     }
 }
 
+/*
 static bool set_material_texture(vk_material_t *mat, const char *path) {
     char ext_path[MAX_PATH];
     snprintf(ext_path, sizeof(ext_path), "%s.mat", path);
@@ -1414,8 +1473,10 @@ static bool set_material_texture(vk_material_t *mat, const char *path) {
 
     return true;
 }
+*/
 
 static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
+    // Allocate global descriptor
     for (uint32_t i = 0; i < FRAME_FLIGHT; i++) {
         void *map = NULL;
         VkResult res = re.vkMapMemory(core->logic_dvc, mat->buffers[i].memory,
@@ -1428,36 +1489,73 @@ static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
             LOG_ERROR("Failed to map UBO buffer %u", i);
         }
 
-        VkDescriptorSetAllocateInfo alloc_info = {
+        VkDescriptorSetAllocateInfo glob_alloc = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
             .descriptorPool = mat->global_pool,
             .descriptorSetCount = 1,
             .pSetLayouts = &mat->global_layout,
         };
 
-        if (re.vkAllocateDescriptorSets(core->logic_dvc, &alloc_info,
+        if (re.vkAllocateDescriptorSets(core->logic_dvc, &glob_alloc,
                                         &mat->global_sets[i]) != VK_SUCCESS) {
             LOG_ERROR("Failed to allocate global descriptor set %u", i);
             return false;
         }
 
-        VkDescriptorBufferInfo buffer_info = {.buffer = mat->buffers[i].handle,
+        VkDescriptorBufferInfo glob_buffer = {.buffer = mat->buffers[i].handle,
                                               .offset = 0,
                                               .range =
                                                   sizeof(vk_camera_data_t)};
 
-        VkWriteDescriptorSet descriptor_write = {
+        VkWriteDescriptorSet glob_write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = mat->global_sets[i],
             .dstBinding = 0,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &buffer_info,
+            .pBufferInfo = &glob_buffer,
         };
-
-        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &descriptor_write, 0,
-                                  NULL);
+        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &glob_write, 0, NULL);
     }
+
+    // Allocate object descriptor
+    void *map = NULL;
+    VkResult res = re.vkMapMemory(core->logic_dvc, mat->obj_buffers.memory, 0,
+                                  sizeof(vk_object_data_t), 0, &map);
+
+    if (res == VK_SUCCESS) {
+        mat->obj_buffers.mapped = map;
+    } else {
+        mat->obj_buffers.mapped = NULL;
+        LOG_ERROR("Failed to map object buffer");
+    }
+
+    VkDescriptorSetAllocateInfo obj_alloc = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = mat->object_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &mat->object_layout,
+    };
+
+    if (re.vkAllocateDescriptorSets(core->logic_dvc, &obj_alloc,
+                                    &mat->object_set) != VK_SUCCESS) {
+        LOG_ERROR("Failed to allocate object descriptor set");
+        return false;
+    }
+
+    VkDescriptorBufferInfo obj_buffer = {.buffer = mat->obj_buffers.handle,
+                                         .offset = 0,
+                                         .range = sizeof(vk_object_data_t)};
+
+    VkWriteDescriptorSet obj_write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = mat->object_set,
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &obj_buffer,
+    };
+    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_write, 0, NULL);
 
     return true;
 }
@@ -1478,7 +1576,7 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
         {.stageFlags =
              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
          .offset = 0,
-         .size = sizeof(mat4) + sizeof(vec4)},
+         .size = sizeof(mat4)},
     };
 
     VkVertexInputAttributeDescription attrs[] =
@@ -1491,12 +1589,12 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
           .format = VK_FORMAT_R32G32_SFLOAT,
           .offset = offsetof(vertex_3d, texcoord)}};
 
-    VkDescriptorSetLayout layouts[1] = {mat->global_layout};
+    VkDescriptorSetLayout layouts[2] = {mat->global_layout, mat->object_layout};
 
     vk_pipeline_desc_t pipeline_desc = {.stages = stages,
                                         .stage_count = 2,
                                         .desc_layouts = layouts,
-                                        .desc_layout_count = 1,
+                                        .desc_layout_count = 2,
                                         .push_consts = push_constants,
                                         .push_constant_count = 1,
                                         .attrs = attrs,
@@ -1521,6 +1619,7 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
     memset(mat, 0, sizeof(vk_material_t));
     if (!set_shader(core, mat, shader_name)) return false;
 
+    // Global descriptor
     VkDescriptorSetLayoutBinding glob_binding = {
         .binding = 0,
         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1535,17 +1634,44 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
     CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &glob_layout,
                                             core->alloc, &mat->global_layout));
 
-    VkDescriptorPoolSize glob_pool = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    VkDescriptorPoolSize glob_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                                       .descriptorCount = FRAME_FLIGHT};
 
-    VkDescriptorPoolCreateInfo pool_info = {
+    VkDescriptorPoolCreateInfo glob_pool = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .maxSets = FRAME_FLIGHT,
         .poolSizeCount = 1,
-        .pPoolSizes = &glob_pool,
+        .pPoolSizes = &glob_size,
     };
-    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &pool_info, core->alloc,
+    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &glob_pool, core->alloc,
                                        &mat->global_pool));
+
+    // Object descriptor
+    VkDescriptorSetLayoutBinding obj_binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+    VkDescriptorSetLayoutCreateInfo obj_layout = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &obj_binding,
+    };
+    CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &obj_layout,
+                                            core->alloc, &mat->object_layout));
+
+    VkDescriptorPoolSize obj_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                     .descriptorCount = FRAME_FLIGHT};
+
+    VkDescriptorPoolCreateInfo obj_pool = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = FRAME_FLIGHT,
+        .poolSizeCount = 1,
+        .pPoolSizes = &obj_size,
+    };
+    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &obj_pool, core->alloc,
+                                       &mat->object_pool));
 
     for (uint32_t i = 0; i < FRAME_FLIGHT; i++) {
         if (!buffer_init(core, &mat->buffers[i],
@@ -1554,9 +1680,19 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                          RE_BUFFER_UNIFORM)) {
-            LOG_ERROR("Failed to create camera buffer %u", i);
+            LOG_ERROR("Failed to create global buffer %u", i);
             return false;
         }
+    }
+
+    if (!buffer_init(core, &mat->obj_buffers,
+                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     sizeof(vk_object_data_t),
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     RE_BUFFER_UNIFORM)) {
+        LOG_ERROR("Failed to create object buffer");
+        return false;
     }
 
     set_material_descriptors(core, mat);
@@ -1568,23 +1704,27 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
 void material_kill(vk_core_t *core, vk_material_t *material) {
     pipeline_kill(core, &material->pipelines);
 
+    VkMemoryPropertyFlags mem_prop = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
     for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
-        VkMemoryPropertyFlags mem_prop = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
         buffer_kill(core, &material->buffers[i], mem_prop, RE_BUFFER_UNIFORM);
     }
+    buffer_kill(core, &material->obj_buffers, mem_prop, RE_BUFFER_UNIFORM);
 
-    if (material->global_pool) {
-        re.vkDestroyDescriptorPool(core->logic_dvc, material->global_pool,
-                                   core->alloc);
-        material->global_pool = VK_NULL_HANDLE;
-    }
+    re.vkDestroyDescriptorPool(core->logic_dvc, material->global_pool,
+                               core->alloc);
+    material->global_pool = VK_NULL_HANDLE;
+    re.vkDestroyDescriptorPool(core->logic_dvc, material->object_pool,
+                               core->alloc);
+    material->object_pool = VK_NULL_HANDLE;
 
-    if (material->global_layout) {
-        re.vkDestroyDescriptorSetLayout(core->logic_dvc,
-                                        material->global_layout, core->alloc);
-        material->global_layout = VK_NULL_HANDLE;
-    }
+    re.vkDestroyDescriptorSetLayout(core->logic_dvc, material->global_layout,
+                                    core->alloc);
+    material->global_layout = VK_NULL_HANDLE;
+    re.vkDestroyDescriptorSetLayout(core->logic_dvc, material->object_layout,
+                                    core->alloc);
+    material->object_layout = VK_NULL_HANDLE;
 
     unset_shader(core, material);
 }

@@ -2,8 +2,6 @@
 #include "backend.h"
 #include "core/memory.h"
 #include "core/math/maths.h"
-#include "core/binary_loader.h"
-// #include "core/math/math_type.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -472,15 +470,18 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
     // TODO: Temporary code!!
+    /*
     struct {
         mat4 model;
         vec4 diffuse_color;
-    } push = {.model = obj->model, .diffuse_color = obj->diffuse_color};
+    } push = {.model = obj->model,
+              .diffuse_color = obj->material.diffuse_color};
+              */
 
     re.vkCmdPushConstants(cmd, pipeline.layout,
                           VK_SHADER_STAGE_VERTEX_BIT |
                               VK_SHADER_STAGE_FRAGMENT_BIT,
-                          0, sizeof(push), &push);
+                          0, sizeof(mat4), &obj->model);
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
     VkDeviceSize offset[] = {obj->geo->vertex_offset};
@@ -501,12 +502,17 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
 
 static void apply_world(render_system_t *r) {
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
-    VkDescriptorSet sets = r->vk.main_material.global_sets[r->vk.frame_idx];
-    vk_pipeline_t pipeline = r->vk.main_material.pipelines;
 
+    vk_pipeline_t pipeline = r->vk.main_material.pipelines;
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
+    // VkDescriptorSet sets = r->vk.main_material.global_sets[r->vk.frame_idx];
+    VkDescriptorSet sets[2] = {
+        r->vk.main_material.global_sets[r->vk.frame_idx],
+        r->vk.main_material.object_set,
+    };
     re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                               pipeline.layout, 0, 1, &sets, 0, 0);
+                               pipeline.layout, 0, 2, sets, 0, 0);
 }
 
 static void update_world(render_system_t *r) {
@@ -515,11 +521,17 @@ static void update_world(render_system_t *r) {
         return;
     }
 
+    // update global
     r->vk.main_material.cam_ubo_data.proj = r->camera->main_cam.world_proj;
     r->vk.main_material.cam_ubo_data.view = r->camera->main_cam.world_view;
-
     memcpy(r->vk.main_material.buffers[r->vk.frame_idx].mapped,
            &r->vk.main_material.cam_ubo_data, sizeof(vk_camera_data_t));
+
+    // update per object
+    r->vk.main_material.obj_data.diffuse_color =
+        (vec4){{0.5f, 0.5f, 0.5f, 1.0f}};
+    memcpy(r->vk.main_material.obj_buffers.mapped,
+           &r->vk.main_material.obj_data, sizeof(vk_object_data_t));
 }
 
 /************************************
@@ -587,8 +599,10 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
     /*
     material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
                         "shaders/ubo");
-    // set_material(r, "materials/default");
+    set_material(r, "materials/default");
+    */
 
+    /*
     { // TODO: Temporary code!!
         const uint32_t vertex_count = 4;
         vertex_3d vert_3d[vertex_count];
@@ -697,8 +711,10 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
     geo->vertex_size = v_size;
     uint32_t total_size = v_size * v_count;
 
+    /*
     printf("[Vertex] offset=%u, count=%u, size=%u, total_bytes=%u\n",
            geo->vertex_offset, geo->vertex_count, geo->vertex_size, total_size);
+           */
 
     set_staging_data(g_re, &g_re->vk.vertex_buffer, g_re->vk.core.gfx_pool,
                      g_re->vk.core.graphic_queue, geo->vertex_offset,
@@ -712,9 +728,11 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
         geo->index_size = i_size;
         total_size = i_size * i_count;
 
+        /*
         printf("[Index]  offset=%u, count=%u, size=%u, total_bytes=%u\n",
                geo->index_offset, geo->index_count, geo->index_size,
                total_size);
+               */
 
         set_staging_data(g_re, &g_re->vk.index_buffer, g_re->vk.core.gfx_pool,
                          g_re->vk.core.graphic_queue, geo->index_offset,
@@ -722,4 +740,97 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
 
         g_re->vk.index_offset += total_size;
     }
+}
+
+void render_tex_init(const uint8_t *pixel, texture_data_t *tex_data) {
+    // TODO: use an allocator
+    tex_data->data_internal =
+        (vk_texture_t *)WALLOC(sizeof(vk_texture_t), MEM_TEXTURE);
+
+    vk_texture_t *data = (vk_texture_t *)tex_data->data_internal;
+    VkDeviceSize image_size =
+        tex_data->width * tex_data->height * tex_data->channels;
+
+    VkFormat image_format = VK_FORMAT_R8G8B8A8_UNORM;
+
+    // Create staging buffer & load data
+    VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VkMemoryPropertyFlags mem_prop_flag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    vk_buffer_t staging;
+    buffer_init(&g_re->vk.core, &staging, usage, image_size, mem_prop_flag,
+                RE_BUFFER_STAGING);
+    buffer_load(&g_re->vk.core, &staging, 0, image_size, pixel);
+
+    VkImageUsageFlags image_usage =
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    image_init(&data->image, &g_re->vk.core, image_format, image_usage,
+               VK_IMAGE_ASPECT_COLOR_BIT, tex_data->width, tex_data->height,
+               true, RE_RENDER_TARGET);
+
+    vk_cmdbuffer_t temp_buff;
+    VkCommandPool pool = g_re->vk.core.gfx_pool;
+    VkQueue queue = g_re->vk.core.graphic_queue;
+    cmdbuff_temp_init(&g_re->vk.core, &temp_buff, pool);
+
+    image_transition_layout(&g_re->vk.core, &temp_buff, &data->image,
+                            &image_format, VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    image_copy_buffer(&g_re->vk.core, &data->image, staging.handle, &temp_buff);
+
+    image_transition_layout(&g_re->vk.core, &temp_buff, &data->image,
+                            &image_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    cmdbuff_temp_kill(&g_re->vk.core, &temp_buff, pool, queue);
+    buffer_kill(&g_re->vk.core, &staging, mem_prop_flag, RE_BUFFER_STAGING);
+
+    // Create sampler for texture
+    VkSamplerCreateInfo sampler_info = {};
+    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_info.magFilter = VK_FILTER_LINEAR;
+    sampler_info.minFilter = VK_FILTER_LINEAR;
+
+    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+    sampler_info.anisotropyEnable = VK_FALSE;
+
+    sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_info.unnormalizedCoordinates = VK_FALSE;
+    sampler_info.compareEnable = VK_FALSE;
+    sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+    sampler_info.mipLodBias = 0;
+    sampler_info.minLod = 0;
+    sampler_info.maxLod = 0;
+
+    VkResult result = re.vkCreateSampler(g_re->vk.core.logic_dvc, &sampler_info,
+                                         g_re->vk.core.alloc, &data->sampler);
+    if (result != VK_SUCCESS) {
+        LOG_ERROR("failed create texture sampler");
+        return;
+    }
+}
+
+void render_tex_kill(texture_data_t *tex_data) {
+    re.vkDeviceWaitIdle(g_re->vk.core.logic_dvc);
+
+    vk_texture_t *data = (vk_texture_t *)tex_data->data_internal;
+    if (data) {
+        image_kill(&data->image, &g_re->vk.core, RE_RENDER_TARGET);
+        memset(&data->image, 0, sizeof(vk_image_t));
+
+        re.vkDestroySampler(g_re->vk.core.logic_dvc, data->sampler,
+                            g_re->vk.core.alloc);
+        data->sampler = 0;
+        WFREE(tex_data->data_internal, sizeof(vk_texture_t), MEM_TEXTURE);
+    }
+    memset(tex_data, 0, sizeof(texture_data_t));
 }

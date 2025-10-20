@@ -52,4 +52,7 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
                      const void *vert, uint32_t i_size, uint32_t i_count,
                      const void *indices);
 
+void render_tex_init(const uint8_t *pixel, texture_data_t *tex_data);
+void render_tex_kill(texture_data_t *tex_data);
+
 #endif // RENDERER_FRONTEND_H

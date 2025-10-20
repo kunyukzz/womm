@@ -89,6 +89,13 @@ typedef struct {
 } vk_camera_data_t;
 
 typedef struct {
+    vec4 diffuse_color;
+    vec4 _reserved00; // padding for some graphics card
+    vec4 _reserved01; // padding for some graphics card
+    vec4 _reserved02; // padding for some graphics card
+} vk_object_data_t;
+
+typedef struct {
     const VkPipelineShaderStageCreateInfo *stages;
     uint32_t stage_count;
 
@@ -121,6 +128,8 @@ typedef struct {
     VkDescriptorPool global_pool;
     VkDescriptorSetLayout global_layout;
 
+    vk_object_data_t obj_data;
+
     vk_buffer_t obj_buffers;
     VkDescriptorSet object_set;
     VkDescriptorPool object_pool;
@@ -129,6 +138,14 @@ typedef struct {
     VkImageView diffuse_map;
     VkSampler sampler;
 } vk_material_t;
+
+/************************************
+ * TEXTURE
+ ************************************/
+typedef struct {
+    vk_image_t image;
+    VkSampler sampler;
+} vk_texture_t;
 
 /************************************
  * CORE
