@@ -16,6 +16,7 @@ camera_system_t *camera_system_init(arena_alloc_t *arena, window_t *window) {
     cam->main_cam.near = 0.1f;
     cam->main_cam.far = 1000.0f;
     cam->main_cam.fov = 45.0f;
+    cam->main_cam.dirty = true;
 
     cam->main_cam.world_proj =
         mat4_column_perspective(deg_to_rad(cam->main_cam.fov),
@@ -36,14 +37,6 @@ void camera_system_kill(camera_system_t *cam) {
 }
 
 void camera_update(camera_system_t *cam) {
-    /*
-    float aspect = (float)cam->window->width / (float)cam->window->height;
-
-    cam->main_cam.world_proj =
-        mat4_column_perspective(deg_to_rad(cam->main_cam.fov), aspect,
-                                cam->main_cam.near, cam->main_cam.far);
-                                */
-
     if (cam->main_cam.dirty) {
         mat4 rotation = mat4_euler_xyz(cam->main_cam.rotation.comp1.x,
                                        cam->main_cam.rotation.comp1.y,
@@ -59,7 +52,6 @@ void camera_update(camera_system_t *cam) {
         if (mat4_has_nan(&cam->main_cam.world_view)) {
             LOG_ERROR("NaN in view matrix!");
         }
-
         cam->main_cam.dirty = false;
     }
 }

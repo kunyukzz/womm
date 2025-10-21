@@ -44,7 +44,7 @@ typedef enum {
 typedef struct {
     // char name[64];
     vec4 diffuse_color;
-    // texture_data_t *tex;
+    texture_data_t *tex;
     bool has_texture;
 } material_data_t;
 
@@ -58,6 +58,7 @@ typedef struct {
 
 typedef struct {
     object_bundle_t obj[MAX_GEO];
+    uint32_t obj_count;
     float delta;
 } render_bundle_t;
 

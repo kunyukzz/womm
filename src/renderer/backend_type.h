@@ -8,6 +8,9 @@
 
 #define FRAME_FLIGHT 2
 
+#define VK_MATERIAL_COUNT 1024
+#define VK_SHADER_SAMPLER_COUNT 1
+
 /************************************
  * SWAPCHAIN
  ************************************/
@@ -130,13 +133,15 @@ typedef struct {
 
     vk_object_data_t obj_data;
 
-    vk_buffer_t obj_buffers;
-    VkDescriptorSet object_set;
+    vk_buffer_t obj_buffers[FRAME_FLIGHT];
+    VkDescriptorSet object_set[FRAME_FLIGHT];
     VkDescriptorPool object_pool;
     VkDescriptorSetLayout object_layout;
 
     VkImageView diffuse_map;
     VkSampler sampler;
+
+    bool needs_update[FRAME_FLIGHT];
 } vk_material_t;
 
 /************************************

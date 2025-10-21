@@ -9,7 +9,6 @@ game_system_t *game_init(void) {
     game->cam = get_camera_system();
     game->cam->main_cam.position = (vec3){.comp1.x = 0.0f, 0.0f, 20.0f, 0.0f};
     game->cam->main_cam.rotation = vec3_zero();
-    game->cam->main_cam.dirty = true;
 
     LOG_INFO("Welcome to WOMM!!");
     return game;

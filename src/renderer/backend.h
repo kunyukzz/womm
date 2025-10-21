@@ -129,3 +129,6 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
                          vk_material_t *mat, const char *shader_name);
 
 void material_kill(vk_core_t *core, vk_material_t *material);
+
+void material_bind(vk_core_t *core, vk_material_t *mat, texture_data_t *tex,
+                   uint32_t index);

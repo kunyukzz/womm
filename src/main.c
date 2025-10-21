@@ -26,7 +26,7 @@ typedef struct {
     camera_system_t *camera;
     render_system_t *render;
     geometry_system_t *geo;
-    // texture_system_t *tex;
+    texture_system_t *tex;
     material_system_t *mat;
     game_system_t *game;
 } system_t;
@@ -43,13 +43,13 @@ bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
 #if DEBUG
 static void system_log(void) {
     LOG_DEBUG("=== Memory Addresses ===");
-    LOG_DEBUG("Window:    %p", g_system.window);
     LOG_DEBUG("Event:     %p", g_system.event);
     LOG_DEBUG("Input:     %p", g_system.input);
+    LOG_DEBUG("Window:    %p", g_system.window);
     LOG_DEBUG("Camera:    %p", g_system.camera);
     LOG_DEBUG("Render:    %p", g_system.render);
     LOG_DEBUG("Geometry:  %p", g_system.geo);
-    // LOG_DEBUG("Texture:   %p", g_system.tex);
+    LOG_DEBUG("Texture:   %p", g_system.tex);
     LOG_DEBUG("Material:  %p", g_system.mat);
 
     uint64_t used = arena_used(&g_system.persistent_arena);
@@ -85,34 +85,37 @@ static bool system_init(void) {
                               .is_resizeable = true};
 
     g_system.fs = filesys_init(&g_system.persistent_arena);
-    g_system.window = window_system_init(config, &g_system.persistent_arena);
     g_system.event = event_system_init(&g_system.persistent_arena);
     g_system.input = input_system_init(&g_system.persistent_arena);
 
+    g_system.window = window_system_init(config, &g_system.persistent_arena);
     g_system.camera = camera_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
     g_system.render = render_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
 
     g_system.geo = geo_system_init(&g_system.persistent_arena);
-    // g_system.tex = texture_system_init(&g_system.persistent_arena);
+    g_system.tex = texture_system_init(&g_system.persistent_arena);
     g_system.mat = material_system_init(&g_system.persistent_arena);
     g_system.game = game_init();
 
     // bundle initialize
     g_system.bundle.delta = g_system.game->delta;
 
+    // TODO: all of this was temporary code!!!
     g_system.bundle.obj[0].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[0].model =
         mat4_translate((vec3){{-5.0f, 0.0f, 0.0f, 0}});
     g_system.bundle.obj[0].material.diffuse_color =
-        (vec4){{0.5f, 0.7f, 0.0f, 0.0f}};
+        (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
+    g_system.bundle.obj[0].material.tex = &g_system.tex->default_texture;
 
     g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[1].model =
         mat4_translate((vec3){{5.0f, 0.0f, 0.0f, 0}});
     g_system.bundle.obj[1].material.diffuse_color =
-        (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
+        (vec4){{0.5f, 0.7f, 0.0f, 1.0f}};
+    g_system.bundle.obj_count = 2;
 
 #if DEBUG
     system_log();
@@ -139,13 +142,13 @@ static void system_kill(void) {
     event_unreg(g_system.event, EVENT_KEY_RELEASE, game_on_input, NULL);
 
     material_system_kill(g_system.mat);
-    // texture_system_kill(g_system.tex);
+    texture_system_kill(g_system.tex);
     geo_system_kill(g_system.geo);
     render_system_kill(g_system.render);
     camera_system_kill(g_system.camera);
+    window_system_kill(g_system.window);
     input_system_kill(g_system.input);
     event_system_kill(g_system.event);
-    window_system_kill(g_system.window);
     filesys_kill(g_system.fs);
 
     arena_kill(&g_system.frame_arena);

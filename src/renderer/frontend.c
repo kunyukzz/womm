@@ -469,15 +469,6 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
-    // TODO: Temporary code!!
-    /*
-    struct {
-        mat4 model;
-        vec4 diffuse_color;
-    } push = {.model = obj->model,
-              .diffuse_color = obj->material.diffuse_color};
-              */
-
     re.vkCmdPushConstants(cmd, pipeline.layout,
                           VK_SHADER_STAGE_VERTEX_BIT |
                               VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -506,10 +497,9 @@ static void apply_world(render_system_t *r) {
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
-    // VkDescriptorSet sets = r->vk.main_material.global_sets[r->vk.frame_idx];
     VkDescriptorSet sets[2] = {
         r->vk.main_material.global_sets[r->vk.frame_idx],
-        r->vk.main_material.object_set,
+        r->vk.main_material.object_set[r->vk.frame_idx],
     };
     re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                pipeline.layout, 0, 2, sets, 0, 0);
@@ -526,12 +516,23 @@ static void update_world(render_system_t *r) {
     r->vk.main_material.cam_ubo_data.view = r->camera->main_cam.world_view;
     memcpy(r->vk.main_material.buffers[r->vk.frame_idx].mapped,
            &r->vk.main_material.cam_ubo_data, sizeof(vk_camera_data_t));
+}
 
-    // update per object
-    r->vk.main_material.obj_data.diffuse_color =
-        (vec4){{0.5f, 0.5f, 0.5f, 1.0f}};
-    memcpy(r->vk.main_material.obj_buffers.mapped,
-           &r->vk.main_material.obj_data, sizeof(vk_object_data_t));
+// TODO: hack function!!!!!!
+static void update_descriptor(render_system_t *r, object_bundle_t *obj,
+                              uint32_t obj_count) {
+    for (uint32_t i = 0; i < obj_count; ++i) {
+        object_bundle_t *o = &obj[i];
+
+        r->vk.main_material.obj_data.diffuse_color = o->material.diffuse_color;
+        memcpy(r->vk.main_material.obj_buffers[r->vk.frame_idx].mapped,
+               &r->vk.main_material.obj_data, sizeof(vk_object_data_t));
+
+        if (obj->material.tex) {
+            material_bind(&r->vk.core, &r->vk.main_material, obj->material.tex,
+                          r->vk.frame_idx);
+        }
+    }
 }
 
 /************************************
@@ -595,12 +596,6 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
 
     material_world_init(&r->vk.core, &r->vk.main_pass, &r->vk.main_material,
                         "shaders/ubo");
-
-    /*
-    material_world_init(&r->vk.core, &r->vk.main_material, &r->vk.main_pass,
-                        "shaders/ubo");
-    set_material(r, "materials/default");
-    */
 
     /*
     { // TODO: Temporary code!!
@@ -668,6 +663,7 @@ void render_system_kill(render_system_t *r) {
 }
 
 bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
+    update_descriptor(r, bundle->obj, bundle->obj_count);
     if (begin_frame(r, bundle->delta)) {
         update_world(r);
 
@@ -675,10 +671,9 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
             LOG_ERROR("cannot do begin pass");
             return false;
         }
-
         apply_world(r);
 
-        for (uint32_t i = 0; i < MAX_GEO; ++i) {
+        for (uint32_t i = 0; i < bundle->obj_count; ++i) {
             draw_world(r, &bundle->obj[i]);
         }
 
@@ -700,6 +695,7 @@ void render_system_resize(uint32_t width, uint32_t height) {
         g_re->camera->main_cam.world_proj =
             mat4_column_perspective(deg_to_rad(cam.fov), aspect, cam.near,
                                     cam.far);
+        g_re->camera->main_cam.dirty = false;
     }
 }
 
