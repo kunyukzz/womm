@@ -1579,7 +1579,7 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
         {.stageFlags =
              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
          .offset = 0,
-         .size = sizeof(mat4)},
+         .size = sizeof(mat4) + sizeof(vec4)},
     };
 
     VkVertexInputAttributeDescription attrs[] =

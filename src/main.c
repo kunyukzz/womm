@@ -108,7 +108,7 @@ static bool system_init(void) {
         mat4_translate((vec3){{-5.0f, 0.0f, 0.0f, 0}});
     g_system.bundle.obj[0].material.diffuse_color =
         (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
-    g_system.bundle.obj[0].material.tex = &g_system.tex->default_texture;
+    g_system.bundle.obj[0].material.tex = &g_system.tex->gear_base;
 
     g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
     g_system.bundle.obj[1].model =
@@ -244,11 +244,12 @@ bool game_on_input(event_system_t *event, uint32_t type, event_t *ev,
             event_push(event, EVENT_QUIT, &evquit, NULL);
             return true;
         } else {
-            LOG_DEBUG("'%s' pressed in window", keycode_to_str(kc));
+            // LOG_DEBUG("'%s' pressed in window", keycode_to_str(kc));
         }
     } else if (type == EVENT_KEY_RELEASE) {
         uint32_t kc = ev->data.keys.keycode;
-        LOG_DEBUG("'%s' released", keycode_to_str(kc));
+        (void)kc;
+        // LOG_DEBUG("'%s' released", keycode_to_str(kc));
     }
     return false;
 }

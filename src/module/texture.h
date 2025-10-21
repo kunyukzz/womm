@@ -10,6 +10,7 @@ typedef struct {
     texture_data_t *textures;
     uint32_t texture_count;
     texture_data_t default_texture;
+    texture_data_t gear_base;
 } texture_system_t;
 
 texture_system_t *texture_system_init(arena_alloc_t *arena);

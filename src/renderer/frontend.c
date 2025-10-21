@@ -469,10 +469,24 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
+    struct {
+        mat4 model;
+        vec4 diffuse_color;
+    } push = {.model = obj->model,
+              .diffuse_color = obj->material.diffuse_color};
+
     re.vkCmdPushConstants(cmd, pipeline.layout,
                           VK_SHADER_STAGE_VERTEX_BIT |
                               VK_SHADER_STAGE_FRAGMENT_BIT,
-                          0, sizeof(mat4), &obj->model);
+                          0, sizeof(push), &push);
+
+    /*
+    LOG_DEBUG("Drawing: color=%.2f/%.2f/%.2f/%.2f",
+              obj->material.diffuse_color.comp1.x,
+              obj->material.diffuse_color.comp1.y,
+              obj->material.diffuse_color.comp1.z,
+              obj->material.diffuse_color.comp1.w);
+              */
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
     VkDeviceSize offset[] = {obj->geo->vertex_offset};
@@ -524,12 +538,14 @@ static void update_descriptor(render_system_t *r, object_bundle_t *obj,
     for (uint32_t i = 0; i < obj_count; ++i) {
         object_bundle_t *o = &obj[i];
 
+        /*
         r->vk.main_material.obj_data.diffuse_color = o->material.diffuse_color;
         memcpy(r->vk.main_material.obj_buffers[r->vk.frame_idx].mapped,
                &r->vk.main_material.obj_data, sizeof(vk_object_data_t));
+               */
 
-        if (obj->material.tex) {
-            material_bind(&r->vk.core, &r->vk.main_material, obj->material.tex,
+        if (o->material.tex) {
+            material_bind(&r->vk.core, &r->vk.main_material, o->material.tex,
                           r->vk.frame_idx);
         }
     }
@@ -738,14 +754,18 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
     }
 }
 
-void render_tex_init(const uint8_t *pixel, texture_data_t *tex_data) {
+bool render_tex_init(const uint8_t *pixel, texture_data_t *tex_data) {
     // TODO: use an allocator
     tex_data->data_internal =
         (vk_texture_t *)WALLOC(sizeof(vk_texture_t), MEM_TEXTURE);
 
     vk_texture_t *data = (vk_texture_t *)tex_data->data_internal;
+    /*
     VkDeviceSize image_size =
         tex_data->width * tex_data->height * tex_data->channels;
+        */
+    // force to load 4 channels!!!
+    VkDeviceSize image_size = tex_data->width * tex_data->height * 4;
 
     VkFormat image_format = VK_FORMAT_R8G8B8A8_UNORM;
 
@@ -811,8 +831,10 @@ void render_tex_init(const uint8_t *pixel, texture_data_t *tex_data) {
                                          g_re->vk.core.alloc, &data->sampler);
     if (result != VK_SUCCESS) {
         LOG_ERROR("failed create texture sampler");
-        return;
+        return false;
     }
+
+    return true;
 }
 
 void render_tex_kill(texture_data_t *tex_data) {

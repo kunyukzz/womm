@@ -10,6 +10,7 @@ layout(set = 0, binding = 0) uniform MVP {
 
 layout(push_constant) uniform Push {
     mat4 model;
+	vec4 diffuse_color;
 } pc;
 
 layout(location = 1) out struct DTO {

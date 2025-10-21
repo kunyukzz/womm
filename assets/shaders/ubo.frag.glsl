@@ -2,7 +2,13 @@
 #version 420
 layout(location = 0) out vec4 out_Color;
 
+/*
 layout(set = 1, binding = 0) uniform Push {
+	vec4 diffuse_color;
+} pc;
+*/
+layout(push_constant) uniform Push {
+	mat4 model;
 	vec4 diffuse_color;
 } pc;
 
@@ -13,7 +19,6 @@ layout(location = 1) in struct DTO {
 } in_dto;
 
 void main() {
-	//out_Color = vec4(frag_Color, 1.0);
-	//out_Color = pc.diffuse_color; // using color
+	//out_Color = vec4(1.0, 0.0, 1.0, 1.0);
 	out_Color = pc.diffuse_color * texture(diffuse_sampler, in_dto.texcoord);
 }
