@@ -512,15 +512,15 @@ static void apply_world(render_system_t *r) {
     pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
     VkDescriptorSet sets[2] = {
-        r->vk.main_material.global_sets[r->vk.frame_idx],
-        r->vk.main_material.object_set[r->vk.frame_idx],
+        r->vk.main_material.global_sets,
+        r->vk.main_material.object_set,
     };
     re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                pipeline.layout, 0, 2, sets, 0, 0);
 }
 
 static void update_world(render_system_t *r) {
-    if (!r->vk.main_material.buffers[r->vk.frame_idx].mapped) {
+    if (!r->vk.main_material.buffers.mapped) {
         LOG_ERROR("UBO frame %u not mapped!", r->vk.frame_idx);
         return;
     }
@@ -528,7 +528,7 @@ static void update_world(render_system_t *r) {
     // update global
     r->vk.main_material.cam_ubo_data.proj = r->camera->main_cam.world_proj;
     r->vk.main_material.cam_ubo_data.view = r->camera->main_cam.world_view;
-    memcpy(r->vk.main_material.buffers[r->vk.frame_idx].mapped,
+    memcpy(r->vk.main_material.buffers.mapped,
            &r->vk.main_material.cam_ubo_data, sizeof(vk_camera_data_t));
 }
 
@@ -537,12 +537,6 @@ static void update_descriptor(render_system_t *r, object_bundle_t *obj,
                               uint32_t obj_count) {
     for (uint32_t i = 0; i < obj_count; ++i) {
         object_bundle_t *o = &obj[i];
-
-        /*
-        r->vk.main_material.obj_data.diffuse_color = o->material.diffuse_color;
-        memcpy(r->vk.main_material.obj_buffers[r->vk.frame_idx].mapped,
-               &r->vk.main_material.obj_data, sizeof(vk_object_data_t));
-               */
 
         if (o->material.tex) {
             material_bind(&r->vk.core, &r->vk.main_material, o->material.tex,
@@ -723,11 +717,6 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
     geo->vertex_size = v_size;
     uint32_t total_size = v_size * v_count;
 
-    /*
-    printf("[Vertex] offset=%u, count=%u, size=%u, total_bytes=%u\n",
-           geo->vertex_offset, geo->vertex_count, geo->vertex_size, total_size);
-           */
-
     set_staging_data(g_re, &g_re->vk.vertex_buffer, g_re->vk.core.gfx_pool,
                      g_re->vk.core.graphic_queue, geo->vertex_offset,
                      (void *)vert, total_size, RE_BUFFER_STAGING);
@@ -739,12 +728,6 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
         geo->index_count = i_count;
         geo->index_size = i_size;
         total_size = i_size * i_count;
-
-        /*
-        printf("[Index]  offset=%u, count=%u, size=%u, total_bytes=%u\n",
-               geo->index_offset, geo->index_count, geo->index_size,
-               total_size);
-               */
 
         set_staging_data(g_re, &g_re->vk.index_buffer, g_re->vk.core.gfx_pool,
                          g_re->vk.core.graphic_queue, geo->index_offset,

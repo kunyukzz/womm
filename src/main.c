@@ -91,11 +91,11 @@ static bool system_init(void) {
     g_system.window = window_system_init(config, &g_system.persistent_arena);
     g_system.camera = camera_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
+    g_system.tex = texture_system_init(&g_system.persistent_arena);
     g_system.render = render_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
 
     g_system.geo = geo_system_init(&g_system.persistent_arena);
-    g_system.tex = texture_system_init(&g_system.persistent_arena);
     g_system.mat = material_system_init(&g_system.persistent_arena);
     g_system.game = game_init();
 

@@ -123,18 +123,18 @@ typedef struct {
 
     vk_camera_data_t cam_ubo_data;
 
-    vk_buffer_t buffers[FRAME_FLIGHT];
+    vk_buffer_t buffers;
     vk_shader_t shaders;
     vk_pipeline_t pipelines;
 
-    VkDescriptorSet global_sets[FRAME_FLIGHT];
+    VkDescriptorSet global_sets;
     VkDescriptorPool global_pool;
     VkDescriptorSetLayout global_layout;
 
     vk_object_data_t obj_data;
 
-    vk_buffer_t obj_buffers[FRAME_FLIGHT];
-    VkDescriptorSet object_set[FRAME_FLIGHT];
+    vk_buffer_t obj_buffers;
+    VkDescriptorSet object_set;
     VkDescriptorPool object_pool;
     VkDescriptorSetLayout object_layout;
 

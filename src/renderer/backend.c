@@ -1477,89 +1477,82 @@ static bool set_material_texture(vk_material_t *mat, const char *path) {
 
 static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
     // Allocate global descriptor
-    for (uint32_t i = 0; i < FRAME_FLIGHT; i++) {
-        void *map = NULL;
-        VkResult res = re.vkMapMemory(core->logic_dvc, mat->buffers[i].memory,
-                                      0, sizeof(vk_camera_data_t), 0, &map);
+    void *glob_map = NULL;
+    VkResult res = re.vkMapMemory(core->logic_dvc, mat->buffers.memory, 0,
+                                  sizeof(vk_camera_data_t), 0, &glob_map);
 
-        if (res == VK_SUCCESS) {
-            mat->buffers[i].mapped = map;
-        } else {
-            mat->buffers[i].mapped = NULL;
-            LOG_ERROR("Failed to map UBO buffer %u", i);
-        }
-
-        VkDescriptorSetAllocateInfo glob_alloc = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = mat->global_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &mat->global_layout,
-        };
-
-        if (re.vkAllocateDescriptorSets(core->logic_dvc, &glob_alloc,
-                                        &mat->global_sets[i]) != VK_SUCCESS) {
-            LOG_ERROR("Failed to allocate global descriptor set %u", i);
-            return false;
-        }
-
-        VkDescriptorBufferInfo glob_buffer = {.buffer = mat->buffers[i].handle,
-                                              .offset = 0,
-                                              .range =
-                                                  sizeof(vk_camera_data_t)};
-
-        VkWriteDescriptorSet glob_write = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = mat->global_sets[i],
-            .dstBinding = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &glob_buffer,
-        };
-        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &glob_write, 0, NULL);
+    if (res == VK_SUCCESS) {
+        mat->buffers.mapped = glob_map;
+    } else {
+        mat->buffers.mapped = NULL;
+        LOG_ERROR("Failed to map UBO buffer");
     }
 
-    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
-        // Allocate object descriptor
-        void *map = NULL;
-        VkResult res =
-            re.vkMapMemory(core->logic_dvc, mat->obj_buffers[i].memory, 0,
-                           sizeof(vk_object_data_t), 0, &map);
+    VkDescriptorSetAllocateInfo glob_alloc = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = mat->global_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &mat->global_layout,
+    };
 
-        if (res == VK_SUCCESS) {
-            mat->obj_buffers[i].mapped = map;
-        } else {
-            mat->obj_buffers[i].mapped = NULL;
-            LOG_ERROR("Failed to map object buffer");
-        }
-
-        VkDescriptorSetAllocateInfo obj_alloc = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = mat->object_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &mat->object_layout,
-        };
-
-        if (re.vkAllocateDescriptorSets(core->logic_dvc, &obj_alloc,
-                                        &mat->object_set[i]) != VK_SUCCESS) {
-            LOG_ERROR("Failed to allocate object descriptor set");
-            return false;
-        }
-
-        VkDescriptorBufferInfo obj_buffer = {.buffer =
-                                                 mat->obj_buffers[i].handle,
-                                             .offset = 0,
-                                             .range = sizeof(vk_object_data_t)};
-
-        VkWriteDescriptorSet obj_write = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = mat->object_set[i],
-            .dstBinding = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &obj_buffer,
-        };
-        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_write, 0, NULL);
+    if (re.vkAllocateDescriptorSets(core->logic_dvc, &glob_alloc,
+                                    &mat->global_sets) != VK_SUCCESS) {
+        LOG_ERROR("Failed to allocate global descriptor set");
+        return false;
     }
+
+    VkDescriptorBufferInfo glob_buffer = {.buffer = mat->buffers.handle,
+                                          .offset = 0,
+                                          .range = sizeof(vk_camera_data_t)};
+
+    VkWriteDescriptorSet glob_write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = mat->global_sets,
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &glob_buffer,
+    };
+    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &glob_write, 0, NULL);
+
+    // Allocate object descriptor
+    void *obj_map = NULL;
+    res = re.vkMapMemory(core->logic_dvc, mat->obj_buffers.memory, 0,
+                         sizeof(vk_object_data_t), 0, &obj_map);
+
+    if (res == VK_SUCCESS) {
+        mat->obj_buffers.mapped = obj_map;
+    } else {
+        mat->obj_buffers.mapped = NULL;
+        LOG_ERROR("Failed to map object buffer");
+    }
+
+    VkDescriptorSetAllocateInfo obj_alloc = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = mat->object_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &mat->object_layout,
+    };
+
+    if (re.vkAllocateDescriptorSets(core->logic_dvc, &obj_alloc,
+                                    &mat->object_set) != VK_SUCCESS) {
+        LOG_ERROR("Failed to allocate object descriptor set");
+        return false;
+    }
+
+    VkDescriptorBufferInfo obj_buffer = {.buffer = mat->obj_buffers.handle,
+                                         .offset = 0,
+                                         .range = sizeof(vk_object_data_t)};
+
+    VkWriteDescriptorSet obj_write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = mat->object_set,
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &obj_buffer,
+    };
+    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_write, 0, NULL);
     return true;
 }
 
@@ -1675,7 +1668,7 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
     // TODO: CHANGE VALUE DESCRIPTOR COUNT!!!!!!!
     // This for unifom buffer - binding 0
     obj_pool_size[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    obj_pool_size[0].descriptorCount = VK_MATERIAL_COUNT;
+    obj_pool_size[0].descriptorCount = VK_MATERIAL_COUNT * FRAME_FLIGHT;
 
     // This for image sampler - binding 1
     obj_pool_size[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1691,26 +1684,23 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
     CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &obj_pool, core->alloc,
                                        &mat->object_pool));
 
-    for (uint32_t i = 0; i < FRAME_FLIGHT; i++) {
-        if (!buffer_init(core, &mat->buffers[i],
-                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                         sizeof(vk_camera_data_t),
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         RE_BUFFER_UNIFORM)) {
-            LOG_ERROR("Failed to create global buffer %u", i);
-            return false;
-        }
+    if (!buffer_init(core, &mat->buffers, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     sizeof(vk_camera_data_t),
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     RE_BUFFER_UNIFORM)) {
+        LOG_ERROR("Failed to create global buffer");
+        return false;
+    }
 
-        if (!buffer_init(core, &mat->obj_buffers[i],
-                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                         sizeof(vk_object_data_t),
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         RE_BUFFER_UNIFORM)) {
-            LOG_ERROR("Failed to create object buffer");
-            return false;
-        }
+    if (!buffer_init(core, &mat->obj_buffers,
+                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     sizeof(vk_object_data_t),
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     RE_BUFFER_UNIFORM)) {
+        LOG_ERROR("Failed to create object buffer");
+        return false;
     }
 
     set_material_descriptors(core, mat);
@@ -1725,11 +1715,8 @@ void material_kill(vk_core_t *core, vk_material_t *material) {
     VkMemoryPropertyFlags mem_prop = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
-        buffer_kill(core, &material->buffers[i], mem_prop, RE_BUFFER_UNIFORM);
-        buffer_kill(core, &material->obj_buffers[i], mem_prop,
-                    RE_BUFFER_UNIFORM);
-    }
+    buffer_kill(core, &material->buffers, mem_prop, RE_BUFFER_UNIFORM);
+    buffer_kill(core, &material->obj_buffers, mem_prop, RE_BUFFER_UNIFORM);
 
     re.vkDestroyDescriptorPool(core->logic_dvc, material->global_pool,
                                core->alloc);
@@ -1764,7 +1751,7 @@ void material_bind(vk_core_t *core, vk_material_t *mat, texture_data_t *tex,
 
         VkWriteDescriptorSet obj_tex_write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = mat->object_set[index],
+            .dstSet = mat->object_set,
             .dstBinding = 1,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
