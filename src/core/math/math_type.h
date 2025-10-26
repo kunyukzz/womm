@@ -48,6 +48,7 @@ typedef vec4 quat;
 
 typedef struct vertex_3d {
     vec3 position;
+    vec3 normal;
     vec2 texcoord;
 } vertex_3d;
 

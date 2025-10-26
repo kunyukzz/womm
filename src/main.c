@@ -91,11 +91,11 @@ static bool system_init(void) {
     g_system.window = window_system_init(config, &g_system.persistent_arena);
     g_system.camera = camera_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
-    g_system.tex = texture_system_init(&g_system.persistent_arena);
     g_system.render = render_system_init(&g_system.persistent_arena,
                                          &g_system.window->native_win);
 
     g_system.geo = geo_system_init(&g_system.persistent_arena);
+    g_system.tex = texture_system_init(&g_system.persistent_arena);
     g_system.mat = material_system_init(&g_system.persistent_arena);
     g_system.game = game_init();
 
@@ -104,18 +104,11 @@ static bool system_init(void) {
 
     // TODO: all of this was temporary code!!!
     g_system.bundle.obj[0].geo = &g_system.geo->default_geo;
-    g_system.bundle.obj[0].model =
-        mat4_translate((vec3){{-5.0f, 0.0f, 0.0f, 0}});
+    g_system.bundle.obj[0].model = mat4_identity();
     g_system.bundle.obj[0].material.diffuse_color =
-        (vec4){{0.0f, 1.0f, 0.0f, 1.0f}};
+        (vec4){{1.0f, 1.0f, 1.0f, 1.0f}};
     g_system.bundle.obj[0].material.tex = &g_system.tex->gear_base;
-
-    g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
-    g_system.bundle.obj[1].model =
-        mat4_translate((vec3){{5.0f, 0.0f, 0.0f, 0}});
-    g_system.bundle.obj[1].material.diffuse_color =
-        (vec4){{0.5f, 0.7f, 0.0f, 1.0f}};
-    g_system.bundle.obj_count = 2;
+    g_system.bundle.obj_count = 1;
 
 #if DEBUG
     system_log();
@@ -240,7 +233,7 @@ bool game_on_input(event_system_t *event, uint32_t type, event_t *ev,
     if (type == EVENT_KEY_PRESS) {
         uint32_t kc = ev->data.keys.keycode;
         if (kc == INPUT_KEY_ESCAPE) {
-            event_t evquit;
+            event_t evquit = {};
             event_push(event, EVENT_QUIT, &evquit, NULL);
             return true;
         } else {

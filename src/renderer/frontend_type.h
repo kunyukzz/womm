@@ -32,15 +32,6 @@ typedef struct {
     void *data_internal; // this for pointing to internal vulkan
 } texture_data_t;
 
-typedef enum {
-    MATERIAL_WORLD,
-
-    // for later
-    MATERIAL_UI,
-    MATERIAL_EFFECT,
-    MATERIAL_PBR
-} material_type_t;
-
 typedef struct {
     // char name[64];
     vec4 diffuse_color;

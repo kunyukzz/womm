@@ -119,12 +119,12 @@ bool window_system_pump(window_system_t *window, input_system_t *input,
             } break;
 
             case UnmapNotify: {
-                event_t e;
+                event_t e = {};
                 event_push(event, EVENT_SUSPEND, &e, NULL);
             } break;
 
             case MapNotify: {
-                event_t e;
+                event_t e = {};
                 event_push(event, EVENT_RESUME, &e, NULL);
             } break;
 

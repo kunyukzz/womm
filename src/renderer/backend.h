@@ -130,5 +130,14 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
 
 void material_kill(vk_core_t *core, vk_material_t *material);
 
-void material_bind(vk_core_t *core, vk_material_t *mat, texture_data_t *tex,
-                   uint32_t index);
+// void material_bind(vk_core_t *core, vk_material_t *mat, texture_data_t *tex);
+
+// NEW
+void material_use(vk_material_t *mat, VkCommandBuffer buffer);
+
+void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
+                  VkPipelineLayout layout);
+
+void material_bind(vk_core_t *core, vk_material_t *mat, VkCommandBuffer buffer,
+                   VkPipelineLayout layout, object_bundle_t *obj,
+                   uint32_t frame_idx);

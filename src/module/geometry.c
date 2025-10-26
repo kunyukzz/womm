@@ -209,11 +209,19 @@ bool default_geo_init(geometry_system_t *geo) {
     memset(vert_3d, 0, sizeof(vertex_3d) * 24);
     const float f = 5.0f;
 
+    vec3 fn = {{0.0f, 0.0f, 1.0f, 0}};
+    vec3 bn = {{0.0f, 0.0f, -1.0f, 0}};
+    vec3 ln = {{-1.0f, 0.0f, 0.0f, 0}};
+    vec3 rn = {{1.0f, 0.0f, 0.0f, 0}};
+    vec3 tn = {{0.0f, -1.0f, 0.0f, 0}};
+    vec3 btn = {{0.0f, 1.0f, 0.0f, 0}};
+
     { // FRONT FACE
         // top left
         vert_3d[0].position.comp1.x = -0.5f * f;
         vert_3d[0].position.comp1.y = 0.5f * f;
         vert_3d[0].position.comp1.z = 0.5f * f;
+        vert_3d[0].normal.comp1 = fn.comp1;
         vert_3d[0].texcoord.comp1.x = 0;
         vert_3d[0].texcoord.comp1.y = 0;
 
@@ -221,6 +229,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[1].position.comp1.x = 0.5f * f;
         vert_3d[1].position.comp1.y = 0.5f * f;
         vert_3d[1].position.comp1.z = 0.5f * f;
+        vert_3d[1].normal.comp1 = fn.comp1;
         vert_3d[1].texcoord.comp1.x = 1;
         vert_3d[1].texcoord.comp1.y = 0;
 
@@ -228,6 +237,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[2].position.comp1.x = 0.5f * f;
         vert_3d[2].position.comp1.y = -0.5f * f;
         vert_3d[2].position.comp1.z = 0.5f * f;
+        vert_3d[2].normal.comp1 = fn.comp1;
         vert_3d[2].texcoord.comp1.x = 1;
         vert_3d[2].texcoord.comp1.y = 1;
 
@@ -235,6 +245,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[3].position.comp1.x = -0.5f * f;
         vert_3d[3].position.comp1.y = -0.5f * f;
         vert_3d[3].position.comp1.z = 0.5f * f;
+        vert_3d[3].normal.comp1 = fn.comp1;
         vert_3d[3].texcoord.comp1.x = 0;
         vert_3d[3].texcoord.comp1.y = 1;
     }
@@ -244,6 +255,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[4].position.comp1.x = -0.5f * f;
         vert_3d[4].position.comp1.y = 0.5f * f;
         vert_3d[4].position.comp1.z = -0.5f * f;
+        vert_3d[4].normal.comp1 = bn.comp1;
         vert_3d[4].texcoord.comp1.x = 1;
         vert_3d[4].texcoord.comp1.y = 0;
 
@@ -251,6 +263,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[5].position.comp1.x = 0.5f * f;
         vert_3d[5].position.comp1.y = 0.5f * f;
         vert_3d[5].position.comp1.z = -0.5f * f;
+        vert_3d[5].normal.comp1 = bn.comp1;
         vert_3d[5].texcoord.comp1.x = 0;
         vert_3d[5].texcoord.comp1.y = 0;
 
@@ -258,6 +271,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[6].position.comp1.x = 0.5f * f;
         vert_3d[6].position.comp1.y = -0.5f * f;
         vert_3d[6].position.comp1.z = -0.5f * f;
+        vert_3d[6].normal.comp1 = bn.comp1;
         vert_3d[6].texcoord.comp1.x = 0;
         vert_3d[6].texcoord.comp1.y = 1;
 
@@ -265,6 +279,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[7].position.comp1.x = -0.5f * f;
         vert_3d[7].position.comp1.y = -0.5f * f;
         vert_3d[7].position.comp1.z = -0.5f * f;
+        vert_3d[7].normal.comp1 = bn.comp1;
         vert_3d[7].texcoord.comp1.x = 1;
         vert_3d[7].texcoord.comp1.y = 1;
     }
@@ -274,6 +289,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[8].position.comp1.x = 0.5f * f;
         vert_3d[8].position.comp1.y = 0.5f * f;
         vert_3d[8].position.comp1.z = 0.5f * f;
+        vert_3d[8].normal.comp1 = rn.comp1;
         vert_3d[8].texcoord.comp1.x = 0;
         vert_3d[8].texcoord.comp1.y = 0;
 
@@ -281,6 +297,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[9].position.comp1.x = 0.5f * f;
         vert_3d[9].position.comp1.y = 0.5f * f;
         vert_3d[9].position.comp1.z = -0.5f * f;
+        vert_3d[9].normal.comp1 = rn.comp1;
         vert_3d[9].texcoord.comp1.x = 1;
         vert_3d[9].texcoord.comp1.y = 0;
 
@@ -288,6 +305,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[10].position.comp1.x = 0.5f * f;
         vert_3d[10].position.comp1.y = -0.5f * f;
         vert_3d[10].position.comp1.z = -0.5f * f;
+        vert_3d[10].normal.comp1 = rn.comp1;
         vert_3d[10].texcoord.comp1.x = 1;
         vert_3d[10].texcoord.comp1.y = 1;
 
@@ -295,6 +313,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[11].position.comp1.x = 0.5f * f;
         vert_3d[11].position.comp1.y = -0.5f * f;
         vert_3d[11].position.comp1.z = 0.5f * f;
+        vert_3d[11].normal.comp1 = rn.comp1;
         vert_3d[11].texcoord.comp1.x = 0;
         vert_3d[11].texcoord.comp1.y = 1;
     }
@@ -304,6 +323,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[12].position.comp1.x = -0.5f * f;
         vert_3d[12].position.comp1.y = 0.5f * f;
         vert_3d[12].position.comp1.z = -0.5f * f;
+        vert_3d[12].normal.comp1 = ln.comp1;
         vert_3d[12].texcoord.comp1.x = 0;
         vert_3d[12].texcoord.comp1.y = 0;
 
@@ -311,6 +331,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[13].position.comp1.x = -0.5f * f;
         vert_3d[13].position.comp1.y = 0.5f * f;
         vert_3d[13].position.comp1.z = 0.5f * f;
+        vert_3d[13].normal.comp1 = ln.comp1;
         vert_3d[13].texcoord.comp1.x = 1;
         vert_3d[13].texcoord.comp1.y = 0;
 
@@ -318,6 +339,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[14].position.comp1.x = -0.5f * f;
         vert_3d[14].position.comp1.y = -0.5f * f;
         vert_3d[14].position.comp1.z = 0.5f * f;
+        vert_3d[14].normal.comp1 = ln.comp1;
         vert_3d[14].texcoord.comp1.x = 1;
         vert_3d[14].texcoord.comp1.y = 1;
 
@@ -325,6 +347,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[15].position.comp1.x = -0.5f * f;
         vert_3d[15].position.comp1.y = -0.5f * f;
         vert_3d[15].position.comp1.z = -0.5f * f;
+        vert_3d[15].normal.comp1 = ln.comp1;
         vert_3d[15].texcoord.comp1.x = 0;
         vert_3d[15].texcoord.comp1.y = 1;
     }
@@ -334,6 +357,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[16].position.comp1.x = -0.5f * f;
         vert_3d[16].position.comp1.y = 0.5f * f;
         vert_3d[16].position.comp1.z = -0.5f * f;
+        vert_3d[16].normal.comp1 = tn.comp1;
         vert_3d[16].texcoord.comp1.x = 0;
         vert_3d[16].texcoord.comp1.y = 0;
 
@@ -341,6 +365,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[17].position.comp1.x = 0.5f * f;
         vert_3d[17].position.comp1.y = 0.5f * f;
         vert_3d[17].position.comp1.z = -0.5f * f;
+        vert_3d[17].normal.comp1 = tn.comp1;
         vert_3d[17].texcoord.comp1.x = 1;
         vert_3d[17].texcoord.comp1.y = 0;
 
@@ -348,6 +373,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[18].position.comp1.x = 0.5f * f;
         vert_3d[18].position.comp1.y = 0.5f * f;
         vert_3d[18].position.comp1.z = 0.5f * f;
+        vert_3d[18].normal.comp1 = tn.comp1;
         vert_3d[18].texcoord.comp1.x = 1;
         vert_3d[18].texcoord.comp1.y = 1;
 
@@ -355,6 +381,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[19].position.comp1.x = -0.5f * f;
         vert_3d[19].position.comp1.y = 0.5f * f;
         vert_3d[19].position.comp1.z = 0.5f * f;
+        vert_3d[19].normal.comp1 = tn.comp1;
         vert_3d[19].texcoord.comp1.x = 0;
         vert_3d[19].texcoord.comp1.y = 1;
     }
@@ -364,6 +391,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[20].position.comp1.x = -0.5f * f;
         vert_3d[20].position.comp1.y = -0.5f * f;
         vert_3d[20].position.comp1.z = 0.5f * f;
+        vert_3d[20].normal.comp1 = btn.comp1;
         vert_3d[20].texcoord.comp1.x = 0;
         vert_3d[20].texcoord.comp1.y = 0;
 
@@ -371,6 +399,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[21].position.comp1.x = 0.5f * f;
         vert_3d[21].position.comp1.y = -0.5f * f;
         vert_3d[21].position.comp1.z = 0.5f * f;
+        vert_3d[21].normal.comp1 = btn.comp1;
         vert_3d[21].texcoord.comp1.x = 1;
         vert_3d[21].texcoord.comp1.y = 0;
 
@@ -378,6 +407,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[22].position.comp1.x = 0.5f * f;
         vert_3d[22].position.comp1.y = -0.5f * f;
         vert_3d[22].position.comp1.z = -0.5f * f;
+        vert_3d[22].normal.comp1 = btn.comp1;
         vert_3d[22].texcoord.comp1.x = 1;
         vert_3d[22].texcoord.comp1.y = 1;
 
@@ -385,6 +415,7 @@ bool default_geo_init(geometry_system_t *geo) {
         vert_3d[23].position.comp1.x = -0.5f * f;
         vert_3d[23].position.comp1.y = -0.5f * f;
         vert_3d[23].position.comp1.z = -0.5f * f;
+        vert_3d[23].normal.comp1 = btn.comp1;
         vert_3d[23].texcoord.comp1.x = 0;
         vert_3d[23].texcoord.comp1.y = 1;
     }
@@ -401,6 +432,13 @@ bool default_geo_init(geometry_system_t *geo) {
                             16, 17, 18, 16, 18, 19,
                             // Bottom face
                             20, 21, 22, 20, 22, 23};
+
+    LOG_DEBUG("=== CUBE NORMALS ===");
+    for (int i = 0; i < 24; i++) {
+        LOG_DEBUG("Vertex %d: normal (%.1f, %.1f, %.1f)", i,
+                  vert_3d[i].normal.comp1.x, vert_3d[i].normal.comp1.y,
+                  vert_3d[i].normal.comp1.z);
+    }
 
     render_geo_init(&geo->default_geo, sizeof(vertex_3d), 24, vert_3d,
                     sizeof(uint32_t), 36, indices);

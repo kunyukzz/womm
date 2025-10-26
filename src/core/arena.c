@@ -1,7 +1,6 @@
 #include "arena.h"
 #include "memory.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 #define DEFAULT_ALIGNMENT 0x08
@@ -39,7 +38,7 @@ void *arena_alloc_align(arena_alloc_t *arena, uint64_t size,
     if (!arena || size == 0) return NULL;
 
     uint64_t aligned_offset =
-        (arena->curr_offset + (alignment - 1)) & ~(alignment - 1);
+        (arena->curr_offset + (alignment - 1)) & ~((uint64_t)alignment - 1);
 
     if (aligned_offset + size > arena->total_size) {
         return NULL;

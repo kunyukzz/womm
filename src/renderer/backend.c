@@ -1435,46 +1435,6 @@ static void unset_shader(vk_core_t *core, vk_material_t *material) {
     }
 }
 
-/*
-static bool set_material_texture(vk_material_t *mat, const char *path) {
-    char ext_path[MAX_PATH];
-    snprintf(ext_path, sizeof(ext_path), "%s.mat", path);
-
-    uint64_t size = 0;
-    char *text = read_file_text(ext_path, &size);
-    if (!text) return false;
-
-    char *line = text;
-    while (line && *line) {
-        char *next = strchr(line, '\n');
-        if (next) *next++ = 0;
-
-        if (strncmp(line, "name=", 5) == 0) {
-            strncpy(mat->data.name, line + 5, sizeof(mat->data.name) - 1);
-            mat->data.name[sizeof(mat->data.name) - 1] = '\0';
-        } else if (strncmp(line, "color=", 6) == 0) {
-            if (sscanf(line + 6, "%f %f %f %f", &mat->data.color.comp1.x,
-                       &mat->data.color.comp1.y, &mat->data.color.comp1.z,
-                       &mat->data.color.comp1.w) != 4) {
-                LOG_WARN("Invalid color in material '%s'", mat->data.name);
-            }
-        } else if (strncmp(line, "texture=", 8) == 0) {
-            strncpy(mat->data.texture_name, line + 8,
-                    sizeof(mat->data.texture_name) - 1);
-            mat->data.texture_name[sizeof(mat->data.texture_name) - 1] = '\0';
-            mat->data.has_texture = 1;
-        }
-        line = next;
-    }
-
-    WFREE(text, size + 1, MEM_RESOURCE);
-    LOG_INFO("Material CPU loaded: %s (texture=%s)", mat->data.name,
-             mat->data.has_texture ? mat->data.texture_name : "none");
-
-    return true;
-}
-*/
-
 static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
     // Allocate global descriptor
     void *glob_map = NULL;
@@ -1516,43 +1476,46 @@ static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
     re.vkUpdateDescriptorSets(core->logic_dvc, 1, &glob_write, 0, NULL);
 
     // Allocate object descriptor
-    void *obj_map = NULL;
-    res = re.vkMapMemory(core->logic_dvc, mat->obj_buffers.memory, 0,
-                         sizeof(vk_object_data_t), 0, &obj_map);
+    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
+        void *obj_map = NULL;
+        res = re.vkMapMemory(core->logic_dvc, mat->obj_buffers[i].memory, 0,
+                             sizeof(vk_object_data_t), 0, &obj_map);
 
-    if (res == VK_SUCCESS) {
-        mat->obj_buffers.mapped = obj_map;
-    } else {
-        mat->obj_buffers.mapped = NULL;
-        LOG_ERROR("Failed to map object buffer");
+        if (res == VK_SUCCESS) {
+            mat->obj_buffers[i].mapped = obj_map;
+        } else {
+            mat->obj_buffers[i].mapped = NULL;
+            LOG_ERROR("Failed to map object buffer");
+        }
+
+        VkDescriptorSetAllocateInfo obj_alloc = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = mat->object_pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &mat->object_layout,
+        };
+
+        if (re.vkAllocateDescriptorSets(core->logic_dvc, &obj_alloc,
+                                        &mat->object_set[i]) != VK_SUCCESS) {
+            LOG_ERROR("Failed to allocate object descriptor set");
+            return false;
+        }
+
+        VkDescriptorBufferInfo obj_buffer = {.buffer =
+                                                 mat->obj_buffers[i].handle,
+                                             .offset = 0,
+                                             .range = sizeof(vk_object_data_t)};
+
+        VkWriteDescriptorSet obj_write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = mat->object_set[i],
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &obj_buffer,
+        };
+        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_write, 0, NULL);
     }
-
-    VkDescriptorSetAllocateInfo obj_alloc = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = mat->object_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &mat->object_layout,
-    };
-
-    if (re.vkAllocateDescriptorSets(core->logic_dvc, &obj_alloc,
-                                    &mat->object_set) != VK_SUCCESS) {
-        LOG_ERROR("Failed to allocate object descriptor set");
-        return false;
-    }
-
-    VkDescriptorBufferInfo obj_buffer = {.buffer = mat->obj_buffers.handle,
-                                         .offset = 0,
-                                         .range = sizeof(vk_object_data_t)};
-
-    VkWriteDescriptorSet obj_write = {
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = mat->object_set,
-        .dstBinding = 0,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo = &obj_buffer,
-    };
-    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_write, 0, NULL);
     return true;
 }
 
@@ -1575,15 +1538,19 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
          .size = sizeof(mat4) + sizeof(vec4)},
     };
 
-    VkVertexInputAttributeDescription attrs[] =
+    VkVertexInputAttributeDescription attrs[3] =
         {{.location = 0,
           .binding = 0,
           .format = VK_FORMAT_R32G32B32_SFLOAT,
           .offset = offsetof(vertex_3d, position)},
-         {.location = 1,
+         {.location = 2,
           .binding = 0,
           .format = VK_FORMAT_R32G32_SFLOAT,
-          .offset = offsetof(vertex_3d, texcoord)}};
+          .offset = offsetof(vertex_3d, texcoord)},
+         {.location = 1,
+          .binding = 0,
+          .format = VK_FORMAT_R32G32B32_SFLOAT,
+          .offset = offsetof(vertex_3d, normal)}};
 
     VkDescriptorSetLayout layouts[2] = {mat->global_layout, mat->object_layout};
 
@@ -1594,7 +1561,7 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
                                         .push_consts = push_constants,
                                         .push_constant_count = 1,
                                         .attrs = attrs,
-                                        .attribute_count = 2,
+                                        .attribute_count = 3,
                                         .vertex_stride = sizeof(vertex_3d)};
 
     pipe_config_t config = {.wireframe = false,
@@ -1693,14 +1660,16 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
         return false;
     }
 
-    if (!buffer_init(core, &mat->obj_buffers,
-                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     sizeof(vk_object_data_t),
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     RE_BUFFER_UNIFORM)) {
-        LOG_ERROR("Failed to create object buffer");
-        return false;
+    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
+        if (!buffer_init(core, &mat->obj_buffers[i],
+                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                         sizeof(vk_object_data_t),
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         RE_BUFFER_UNIFORM)) {
+            LOG_ERROR("Failed to create object buffer");
+            return false;
+        }
     }
 
     set_material_descriptors(core, mat);
@@ -1716,8 +1685,10 @@ void material_kill(vk_core_t *core, vk_material_t *material) {
                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
     buffer_kill(core, &material->buffers, mem_prop, RE_BUFFER_UNIFORM);
-    buffer_kill(core, &material->obj_buffers, mem_prop, RE_BUFFER_UNIFORM);
-
+    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
+        buffer_kill(core, &material->obj_buffers[i], mem_prop,
+                    RE_BUFFER_UNIFORM);
+    }
     re.vkDestroyDescriptorPool(core->logic_dvc, material->global_pool,
                                core->alloc);
     material->global_pool = VK_NULL_HANDLE;
@@ -1735,30 +1706,56 @@ void material_kill(vk_core_t *core, vk_material_t *material) {
     unset_shader(core, material);
 }
 
-void material_bind(vk_core_t *core, vk_material_t *mat, texture_data_t *tex,
-                   uint32_t index) {
-    if (!tex || !tex->data_internal) {
+void material_use(vk_material_t *mat, VkCommandBuffer buffer) {
+    pipeline_bind(&mat->pipelines, buffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+}
+
+void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
+                  VkPipelineLayout layout) {
+    struct {
+        mat4 model;
+        vec4 diffuse_color;
+    } push = {.model = obj->model,
+              .diffuse_color = obj->material.diffuse_color};
+
+    re.vkCmdPushConstants(buffer, layout,
+                          VK_SHADER_STAGE_VERTEX_BIT |
+                              VK_SHADER_STAGE_FRAGMENT_BIT,
+                          0, sizeof(push), &push);
+}
+
+void material_bind(vk_core_t *core, vk_material_t *mat, VkCommandBuffer buffer,
+                   VkPipelineLayout layout, object_bundle_t *obj,
+                   uint32_t frame_idx) {
+    if (!obj || !obj->material.tex->data_internal) {
         return;
     }
 
-    vk_texture_t *data = (vk_texture_t *)tex->data_internal;
-    if (!mat->needs_update[index]) {
-        VkDescriptorImageInfo img_info = {
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = data->image.view,
-            .sampler = data->sampler,
-        };
+    vk_texture_t *data = (vk_texture_t *)obj->material.tex->data_internal;
+    vk_object_data_t obj_data;
+    obj_data.diffuse_color = obj->material.diffuse_color;
 
-        VkWriteDescriptorSet obj_tex_write = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = mat->object_set,
-            .dstBinding = 1,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &img_info,
-        };
+    VkDescriptorImageInfo img_info = {
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = data->image.view,
+        .sampler = data->sampler,
+    };
 
-        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_tex_write, 0, NULL);
-        mat->needs_update[index] = true;
-    }
+    VkWriteDescriptorSet obj_tex_write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = mat->object_set[frame_idx],
+        .dstBinding = 1,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &img_info,
+    };
+
+    VkDescriptorSet sets[2] = {
+        mat->global_sets,
+        mat->object_set[frame_idx],
+    };
+
+    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_tex_write, 0, NULL);
+    re.vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
+                               0, 2, sets, 0, 0);
 }

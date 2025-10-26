@@ -133,8 +133,8 @@ typedef struct {
 
     vk_object_data_t obj_data;
 
-    vk_buffer_t obj_buffers;
-    VkDescriptorSet object_set;
+    vk_buffer_t obj_buffers[FRAME_FLIGHT];
+    VkDescriptorSet object_set[FRAME_FLIGHT];
     VkDescriptorPool object_pool;
     VkDescriptorSetLayout object_layout;
 

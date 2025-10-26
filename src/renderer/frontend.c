@@ -450,6 +450,8 @@ static bool begin_pass(render_system_t *r) {
     VkFramebuffer frbuffer = r->vk.main_framebuff[r->vk.image_idx];
 
     renderpass_begin(&r->vk.main_pass, cmd, frbuffer, r->vk.swap.extents);
+
+    material_use(&r->vk.main_material, cmd);
     return true;
 }
 
@@ -467,26 +469,12 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
 
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
-    pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
-    struct {
-        mat4 model;
-        vec4 diffuse_color;
-    } push = {.model = obj->model,
-              .diffuse_color = obj->material.diffuse_color};
+    material_set(obj, cmd, pipeline.layout);
 
-    re.vkCmdPushConstants(cmd, pipeline.layout,
-                          VK_SHADER_STAGE_VERTEX_BIT |
-                              VK_SHADER_STAGE_FRAGMENT_BIT,
-                          0, sizeof(push), &push);
-
-    /*
-    LOG_DEBUG("Drawing: color=%.2f/%.2f/%.2f/%.2f",
-              obj->material.diffuse_color.comp1.x,
-              obj->material.diffuse_color.comp1.y,
-              obj->material.diffuse_color.comp1.z,
-              obj->material.diffuse_color.comp1.w);
-              */
+    // TODO: remove binding material because this was inside of loop call!!!!
+    material_bind(&r->vk.core, &r->vk.main_material, cmd, pipeline.layout, obj,
+                  r->vk.frame_idx);
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
     VkDeviceSize offset[] = {obj->geo->vertex_offset};
@@ -505,20 +493,6 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
     re.vkCmdDrawIndexed(cmd, obj->geo->index_count, 1, 0, 0, 0);
 }
 
-static void apply_world(render_system_t *r) {
-    VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
-
-    vk_pipeline_t pipeline = r->vk.main_material.pipelines;
-    pipeline_bind(&pipeline, cmd, VK_PIPELINE_BIND_POINT_GRAPHICS);
-
-    VkDescriptorSet sets[2] = {
-        r->vk.main_material.global_sets,
-        r->vk.main_material.object_set,
-    };
-    re.vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                               pipeline.layout, 0, 2, sets, 0, 0);
-}
-
 static void update_world(render_system_t *r) {
     if (!r->vk.main_material.buffers.mapped) {
         LOG_ERROR("UBO frame %u not mapped!", r->vk.frame_idx);
@@ -530,19 +504,6 @@ static void update_world(render_system_t *r) {
     r->vk.main_material.cam_ubo_data.view = r->camera->main_cam.world_view;
     memcpy(r->vk.main_material.buffers.mapped,
            &r->vk.main_material.cam_ubo_data, sizeof(vk_camera_data_t));
-}
-
-// TODO: hack function!!!!!!
-static void update_descriptor(render_system_t *r, object_bundle_t *obj,
-                              uint32_t obj_count) {
-    for (uint32_t i = 0; i < obj_count; ++i) {
-        object_bundle_t *o = &obj[i];
-
-        if (o->material.tex) {
-            material_bind(&r->vk.core, &r->vk.main_material, o->material.tex,
-                          r->vk.frame_idx);
-        }
-    }
 }
 
 /************************************
@@ -590,10 +551,10 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
         return NULL;
     }
 
-    VkClearColorValue world_clear_color = {{0.3f, 0.2f, 0.5f, 1.0f}};
+    // VkClearColorValue purple = {{0.3f, 0.2f, 0.5f, 1.0f}};
+    VkClearColorValue black = {{0.2f, 0.2f, 0.2f, 1.0f}};
     if (!renderpass_init(&r->vk.core, &r->vk.main_pass, &r->vk.swap, 1.0f, 0,
-                         COLOR_BUFFER | DEPTH_BUFFER, false, true,
-                         world_clear_color)) {
+                         COLOR_BUFFER | DEPTH_BUFFER, false, true, black)) {
         LOG_FATAL("main renderpass not initialized");
         return false;
     }
@@ -673,7 +634,6 @@ void render_system_kill(render_system_t *r) {
 }
 
 bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
-    update_descriptor(r, bundle->obj, bundle->obj_count);
     if (begin_frame(r, bundle->delta)) {
         update_world(r);
 
@@ -681,7 +641,6 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
             LOG_ERROR("cannot do begin pass");
             return false;
         }
-        apply_world(r);
 
         for (uint32_t i = 0; i < bundle->obj_count; ++i) {
             draw_world(r, &bundle->obj[i]);

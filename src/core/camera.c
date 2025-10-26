@@ -46,12 +46,14 @@ void camera_update(camera_system_t *cam) {
         mat4 world_view = mat4_column_multi(rotation, translate);
         cam->main_cam.world_view = mat4_inverse_rigid(world_view);
 
+        /*
         if (mat4_has_nan(&cam->main_cam.world_proj)) {
             LOG_ERROR("NaN in projection matrix!");
         }
         if (mat4_has_nan(&cam->main_cam.world_view)) {
             LOG_ERROR("NaN in view matrix!");
         }
+        */
         cam->main_cam.dirty = false;
     }
 }
