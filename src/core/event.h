@@ -1,7 +1,7 @@
 #ifndef EVENT_H
 #define EVENT_H
 
-#include "define.h"
+#include "define.h" // IWYU pragma: keep
 #include "arena.h"
 
 typedef enum {
@@ -66,19 +66,16 @@ typedef struct {
 } event_t;
 
 typedef struct event_system_t event_system_t;
-typedef bool (*on_event)(event_system_t *event, uint32_t type, event_t *ev,
-                         void *sender, void *recipient);
+typedef bool (*on_event)(uint32_t type, event_t *ev, void *sender,
+                         void *recipient);
 
 // initializer state
 event_system_t *event_system_init(arena_alloc_t *arena);
 void event_system_kill(event_system_t *event);
 
 // runtime
-bool event_reg(event_system_t *event, uint32_t type, on_event handler,
-               void *recipient);
-bool event_unreg(event_system_t *event, uint32_t type, on_event handler,
-                 void *recipient);
-bool event_push(event_system_t *event, uint32_t type, const event_t *ev,
-                void *sender);
+bool event_reg(uint32_t type, on_event handler, void *recipient);
+bool event_unreg(uint32_t type, on_event handler, void *recipient);
+bool event_push(uint32_t type, const event_t *ev, void *sender);
 
 #endif // EVENT_H

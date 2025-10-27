@@ -9,6 +9,7 @@ typedef struct {
     timer_t timer;
     camera_system_t *cam;
 
+    int32_t mouse_x, mouse_y;
     bool is_running;
     bool is_suspend;
     double last_time;

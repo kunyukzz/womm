@@ -11,6 +11,8 @@ typedef struct {
     uint32_t texture_count;
     texture_data_t default_texture;
     texture_data_t gear_base;
+    texture_data_t vulkan_logo;
+    texture_data_t memes;
 } texture_system_t;
 
 texture_system_t *texture_system_init(arena_alloc_t *arena);

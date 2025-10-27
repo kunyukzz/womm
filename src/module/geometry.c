@@ -7,6 +7,7 @@
 static geometry_system_t *g_geo = NULL;
 
 bool default_geo_init(geometry_system_t *geo);
+bool default_plane_init(geometry_system_t *geo);
 
 geometry_system_t *geo_system_init(arena_alloc_t *arena) {
     if (g_geo != NULL) return g_geo;
@@ -18,6 +19,7 @@ geometry_system_t *geo_system_init(arena_alloc_t *arena) {
     geo->arena = arena;
 
     default_geo_init(geo);
+    default_plane_init(geo);
     LOG_INFO("geometry system initialized");
     return geo;
 }
@@ -166,43 +168,47 @@ geo_cpu_t geo_create_cube(float width, float height, float depth,
 
     return geo;
 }
+*/
 
-bool default_geo_init(geometry_system_t *geo) {
+bool default_plane_init(geometry_system_t *geo) {
     vertex_3d vert_3d[4];
     memset(vert_3d, 0, sizeof(vertex_3d) * 4);
     const float f = 10.0f;
 
     // top left
     vert_3d[0].position.comp1.x = -0.5f * f;
-    vert_3d[0].position.comp1.y = 0.5f * f;
+    vert_3d[0].position.comp1.z = 0.5f * f;
+    vert_3d[0].normal.comp1.z = 1.0f;
     vert_3d[0].texcoord.comp1.x = 0;
     vert_3d[0].texcoord.comp1.y = 0;
 
     // top right
     vert_3d[1].position.comp1.x = 0.5f * f;
-    vert_3d[1].position.comp1.y = 0.5f * f;
+    vert_3d[1].position.comp1.z = 0.5f * f;
+    vert_3d[1].normal.comp1.z = 1.0f;
     vert_3d[1].texcoord.comp1.x = 1;
     vert_3d[1].texcoord.comp1.y = 0;
 
     // bottom right
     vert_3d[2].position.comp1.x = 0.5f * f;
-    vert_3d[2].position.comp1.y = -0.5f * f;
+    vert_3d[2].position.comp1.z = -0.5f * f;
+    vert_3d[2].normal.comp1.z = 1.0f;
     vert_3d[2].texcoord.comp1.x = 1;
     vert_3d[2].texcoord.comp1.y = 1;
 
     // bottom left
     vert_3d[3].position.comp1.x = -0.5f * f;
-    vert_3d[3].position.comp1.y = -0.5f * f;
+    vert_3d[3].position.comp1.z = -0.5f * f;
+    vert_3d[3].normal.comp1.z = 1.0f;
     vert_3d[3].texcoord.comp1.x = 0;
     vert_3d[3].texcoord.comp1.y = 1;
 
     uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
 
-    render_geo_init(&geo->default_geo, sizeof(vertex_3d), 4, vert_3d,
+    render_geo_init(&geo->plane, sizeof(vertex_3d), 4, vert_3d,
                     sizeof(uint32_t), 6, indices);
     return true;
 }
-*/
 
 bool default_geo_init(geometry_system_t *geo) {
     vertex_3d vert_3d[24];
@@ -433,12 +439,14 @@ bool default_geo_init(geometry_system_t *geo) {
                             // Bottom face
                             20, 21, 22, 20, 22, 23};
 
+    /*
     LOG_DEBUG("=== CUBE NORMALS ===");
     for (int i = 0; i < 24; i++) {
         LOG_DEBUG("Vertex %d: normal (%.1f, %.1f, %.1f)", i,
                   vert_3d[i].normal.comp1.x, vert_3d[i].normal.comp1.y,
                   vert_3d[i].normal.comp1.z);
     }
+    */
 
     render_geo_init(&geo->default_geo, sizeof(vertex_3d), 24, vert_3d,
                     sizeof(uint32_t), 36, indices);

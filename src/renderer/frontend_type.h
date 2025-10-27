@@ -33,10 +33,10 @@ typedef struct {
 } texture_data_t;
 
 typedef struct {
-    // char name[64];
     vec4 diffuse_color;
     texture_data_t *tex;
     bool has_texture;
+    uint32_t texture_index;
 } material_data_t;
 
 #define MAX_GEO 10

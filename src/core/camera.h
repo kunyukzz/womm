@@ -28,7 +28,6 @@ void camera_system_kill(camera_system_t *cam);
 
 /*** camera control ***/
 void camera_update(camera_system_t *cam);
-void camera_view(mat4 view);
 void cam_yaw(camera_system_t *cam, float amount);
 void cam_pitch(camera_system_t *cam, float amount);
 

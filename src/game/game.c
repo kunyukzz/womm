@@ -7,8 +7,13 @@ game_system_t *game_init(void) {
     game_system_t *game = WALLOC(sizeof(game_system_t), MEM_GAME);
 
     game->cam = get_camera_system();
-    game->cam->main_cam.position = (vec3){.comp1.x = 0.0f, 0.0f, 20.0f, 0.0f};
-    game->cam->main_cam.rotation = vec3_zero();
+    game->cam->main_cam.position = (vec3){.comp1.x = 0.0f, 0.0f, 40.0f, 0.0f};
+    game->cam->main_cam.rotation = (vec3){
+        .comp1.x = deg_to_rad(45.0f),
+        .comp1.y = deg_to_rad(-45.0f),
+        .comp1.z = 0.0f,
+    };
+    game->cam->main_cam.dirty = true;
 
     LOG_INFO("Welcome to WOMM!!");
     return game;
@@ -16,6 +21,11 @@ game_system_t *game_init(void) {
 
 bool game_update(game_system_t *game, float delta) {
     float move_speed = 5.0f;
+
+    if (button_press(INPUT_MB_LEFT)) {
+        LOG_TRACE("left click!!");
+    }
+
     if (key_press(INPUT_KEY_LEFT)) {
         cam_yaw(game->cam, move_speed * delta);
     }

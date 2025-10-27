@@ -33,34 +33,58 @@ typedef struct {
 
 static system_t g_system;
 
-bool game_on_input(event_system_t *event, uint32_t type, event_t *ev,
-                   void *sender, void *recipient);
-bool game_on_event(event_system_t *event, uint32_t type, event_t *ev,
-                   void *sender, void *recipient);
-bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
-                    void *sender, void *recipient);
+bool game_on_input(uint32_t type, event_t *ev, void *sender, void *recipient);
+bool game_on_event(uint32_t type, event_t *ev, void *sender, void *recipient);
+bool game_on_resize(uint32_t type, event_t *ev, void *sender, void *recipient);
+
+// TODO: Temporary code!!
+static float rot_angle_y1 = 0.0f;
+static float rot_angle_y2 = 0.0f;
+static float rot_speed_y1 = 0.0f;
+static float rot_speed_y2 = 0.0f;
+
+void init_random_rotation() {
+    float min = -0.5f;
+    float max = 0.5f;
+    rot_speed_y1 = frandom_in_range(min, max);
+    rot_speed_y2 = frandom_in_range(min, max);
+}
+
+void update_cube_rotation(float delta_time) {
+    rot_angle_y1 += rot_speed_y1 * delta_time;
+    rot_angle_y2 += rot_speed_y2 * delta_time;
+
+    mat4 cube_tr1 = mat4_translate((vec3){{-5.0f, -2.5f, 0.0f, 0}});
+    mat4 cube_rot1 = mat4_euler_y(rot_angle_y1);
+    g_system.bundle.obj[0].model = mat4_column_multi(cube_tr1, cube_rot1);
+
+    mat4 cube_tr2 = mat4_translate((vec3){{5.0f, -2.5f, 0.0f, 0}});
+    mat4 cube_rot2 = mat4_euler_y(rot_angle_y2);
+    g_system.bundle.obj[1].model = mat4_column_multi(cube_tr2, cube_rot2);
+}
+// TODO: Temporary code end!!
 
 #if DEBUG
 static void system_log(void) {
-    LOG_DEBUG("=== Memory Addresses ===");
-    LOG_DEBUG("Event:     %p", g_system.event);
-    LOG_DEBUG("Input:     %p", g_system.input);
-    LOG_DEBUG("Window:    %p", g_system.window);
-    LOG_DEBUG("Camera:    %p", g_system.camera);
-    LOG_DEBUG("Render:    %p", g_system.render);
-    LOG_DEBUG("Geometry:  %p", g_system.geo);
-    LOG_DEBUG("Texture:   %p", g_system.tex);
-    LOG_DEBUG("Material:  %p", g_system.mat);
+    // LOG_DEBUG("=== Memory Addresses ===");
+    // LOG_DEBUG("Event:     %p", g_system.event);
+    // LOG_DEBUG("Input:     %p", g_system.input);
+    // LOG_DEBUG("Window:    %p", g_system.window);
+    // LOG_DEBUG("Camera:    %p", g_system.camera);
+    // LOG_DEBUG("Render:    %p", g_system.render);
+    // LOG_DEBUG("Geometry:  %p", g_system.geo);
+    // LOG_DEBUG("Texture:   %p", g_system.tex);
+    // LOG_DEBUG("Material:  %p", g_system.mat);
 
     uint64_t used = arena_used(&g_system.persistent_arena);
     uint64_t total = g_system.persistent_arena.total_size;
     float usage_percent = (float)used / (float)total * 100.0f;
 
-    LOG_DEBUG("Arena Usage: %lu/%lu bytes (%.1f%%)", used, total,
+    LOG_TRACE("Arena Usage: %lu/%lu bytes (%.1f%%)", used, total,
               usage_percent);
 
     if (usage_percent < 50.0f) {
-        LOG_WARN("Wasted space! Arena is only %.1f%% used", usage_percent);
+        // LOG_WARN("Wasted space! Arena is only %.1f%% used", usage_percent);
     } else if (usage_percent > 90.0f) {
         LOG_WARN("Arena nearly full! %.1f%% used", usage_percent);
     }
@@ -104,22 +128,43 @@ static bool system_init(void) {
 
     // TODO: all of this was temporary code!!!
     g_system.bundle.obj[0].geo = &g_system.geo->default_geo;
-    g_system.bundle.obj[0].model = mat4_identity();
+    g_system.bundle.obj[0].model =
+        mat4_translate((vec3){.comp1.x = -5.0f, -2.5f, 0.0f, 0});
     g_system.bundle.obj[0].material.diffuse_color =
         (vec4){{1.0f, 1.0f, 1.0f, 1.0f}};
     g_system.bundle.obj[0].material.tex = &g_system.tex->gear_base;
-    g_system.bundle.obj_count = 1;
+    g_system.bundle.obj[0].material.texture_index = 0;
+
+    g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
+    g_system.bundle.obj[1].model =
+        mat4_translate((vec3){.comp1.x = 5.0f, -2.5f, 0.0f, 0});
+    g_system.bundle.obj[1].material.diffuse_color =
+        (vec4){{1.0f, 1.0f, 1.0f, 1.0f}};
+    g_system.bundle.obj[1].material.tex = &g_system.tex->vulkan_logo;
+    g_system.bundle.obj[1].material.texture_index = 1;
+
+    g_system.bundle.obj[2].geo = &g_system.geo->plane;
+    vec3 scale = (vec3){{2.0f, 1.0f, 2.0f, 0}};
+    g_system.bundle.obj[2].model = mat4_scale(scale);
+    g_system.bundle.obj[2].material.diffuse_color =
+        (vec4){{1.0f, 1.0f, 1.0f, 1.0f}};
+    g_system.bundle.obj[2].material.tex = &g_system.tex->memes;
+    g_system.bundle.obj[2].material.texture_index = 2;
+
+    g_system.bundle.obj_count = 3;
 
 #if DEBUG
     system_log();
 #endif
 
-    event_reg(g_system.event, EVENT_QUIT, game_on_event, NULL);
-    event_reg(g_system.event, EVENT_SUSPEND, game_on_event, NULL);
-    event_reg(g_system.event, EVENT_RESUME, game_on_event, NULL);
-    event_reg(g_system.event, EVENT_RESIZE, game_on_resize, NULL);
-    event_reg(g_system.event, EVENT_KEY_PRESS, game_on_input, NULL);
-    event_reg(g_system.event, EVENT_KEY_RELEASE, game_on_input, NULL);
+    event_reg(EVENT_RESIZE, game_on_resize, NULL);
+    event_reg(EVENT_RESUME, game_on_event, NULL);
+    event_reg(EVENT_SUSPEND, game_on_event, NULL);
+    event_reg(EVENT_QUIT, game_on_event, NULL);
+    event_reg(EVENT_KEY_PRESS, game_on_input, NULL);
+    event_reg(EVENT_KEY_RELEASE, game_on_input, NULL);
+
+    init_random_rotation();
 
     return true;
 }
@@ -127,12 +172,12 @@ static bool system_init(void) {
 static void system_kill(void) {
     g_system.game->is_running = false;
 
-    event_unreg(g_system.event, EVENT_QUIT, game_on_event, NULL);
-    event_unreg(g_system.event, EVENT_SUSPEND, game_on_event, NULL);
-    event_unreg(g_system.event, EVENT_RESUME, game_on_event, NULL);
-    event_unreg(g_system.event, EVENT_RESIZE, game_on_resize, NULL);
-    event_unreg(g_system.event, EVENT_KEY_PRESS, game_on_input, NULL);
-    event_unreg(g_system.event, EVENT_KEY_RELEASE, game_on_input, NULL);
+    event_unreg(EVENT_KEY_RELEASE, game_on_input, NULL);
+    event_unreg(EVENT_KEY_PRESS, game_on_input, NULL);
+    event_unreg(EVENT_QUIT, game_on_event, NULL);
+    event_unreg(EVENT_SUSPEND, game_on_event, NULL);
+    event_unreg(EVENT_RESUME, game_on_event, NULL);
+    event_unreg(EVENT_RESIZE, game_on_resize, NULL);
 
     material_system_kill(g_system.mat);
     texture_system_kill(g_system.tex);
@@ -170,8 +215,7 @@ int main(void) {
     LOG_INFO("%s", vram_status(g_system.render));
 
     while (g_system.game->is_running) {
-        if (!window_system_pump(g_system.window, g_system.input,
-                                g_system.event)) {
+        if (!window_system_pump()) {
             g_system.game->is_running = false;
         };
 
@@ -184,8 +228,7 @@ int main(void) {
             g_system.game->last_time = curr_time;
             double frame_time_start = get_abs_time();
 
-            input_system_update(g_system.input, g_system.game->delta,
-                                &g_system.frame_arena);
+            input_system_update(g_system.game->delta);
 
             if (!game_update(g_system.game, g_system.game->delta)) {
                 g_system.game->is_running = false;
@@ -196,6 +239,7 @@ int main(void) {
                 break;
             }
 
+            update_cube_rotation(g_system.game->delta);
             render_system_draw(g_system.render, &g_system.bundle);
 
             double next_frame_time = frame_time_start + TARGET_FRAME_TIME;
@@ -226,15 +270,14 @@ int main(void) {
     return 0;
 }
 
-bool game_on_input(event_system_t *event, uint32_t type, event_t *ev,
-                   void *sender, void *recipient) {
+bool game_on_input(uint32_t type, event_t *ev, void *sender, void *recipient) {
     (void)sender;
     (void)recipient;
     if (type == EVENT_KEY_PRESS) {
         uint32_t kc = ev->data.keys.keycode;
         if (kc == INPUT_KEY_ESCAPE) {
             event_t evquit = {};
-            event_push(event, EVENT_QUIT, &evquit, NULL);
+            event_push(EVENT_QUIT, &evquit, NULL);
             return true;
         } else {
             // LOG_DEBUG("'%s' pressed in window", keycode_to_str(kc));
@@ -247,9 +290,7 @@ bool game_on_input(event_system_t *event, uint32_t type, event_t *ev,
     return false;
 }
 
-bool game_on_event(event_system_t *event, uint32_t type, event_t *ev,
-                   void *sender, void *recipient) {
-    (void)event;
+bool game_on_event(uint32_t type, event_t *ev, void *sender, void *recipient) {
     (void)ev;
     (void)sender;
     (void)recipient;
@@ -274,9 +315,7 @@ bool game_on_event(event_system_t *event, uint32_t type, event_t *ev,
     return false;
 }
 
-bool game_on_resize(event_system_t *event, uint32_t type, event_t *ev,
-                    void *sender, void *recipient) {
-    (void)event;
+bool game_on_resize(uint32_t type, event_t *ev, void *sender, void *recipient) {
     (void)sender;
     (void)recipient;
     if (type == EVENT_RESIZE) {

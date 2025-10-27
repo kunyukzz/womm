@@ -2,8 +2,7 @@
 #define WINDOW_H
 
 #include "core/define.h"
-#include "core/event.h"
-#include "core/input.h"
+#include "core/arena.h"
 
 typedef struct {
     uint32_t width;
@@ -39,8 +38,7 @@ window_system_t *window_system_init(window_config_t config,
                                     arena_alloc_t *arena);
 void window_system_kill(window_system_t *window);
 
-bool window_system_pump(window_system_t *window, input_system_t *input,
-                        event_system_t *event);
+bool window_system_pump(void);
 
 void *window_system_get_native_display(const window_system_t *window);
 void *window_system_get_native_window(const window_system_t *window);

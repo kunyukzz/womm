@@ -1,4 +1,7 @@
 #include "window.h"
+#include "core/event.h"
+#include "core/input.h"
+
 #if PLATFORM_LINUX
 #    include <time.h>
 #    include <string.h>
@@ -6,6 +9,8 @@
 
 #    include <X11/XKBlib.h>
 #    include <X11/Xlib.h>
+
+static window_system_t *g_win = NULL;
 
 window_system_t *window_system_init(window_config_t config,
                                     arena_alloc_t *arena) {
@@ -25,7 +30,7 @@ window_system_t *window_system_init(window_config_t config,
     attrs.background_pixel = BlackPixel(dpy, screen);
     attrs.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask |
                        StructureNotifyMask | ButtonPressMask |
-                       ButtonReleaseMask;
+                       ButtonReleaseMask | PointerMotionMask;
 
     uint32_t value_mask = CWBackPixel | CWEventMask;
 
@@ -54,6 +59,7 @@ window_system_t *window_system_init(window_config_t config,
     window->native_win.display = dpy;
     window->native_win.win = win;
     window->native_win.atom = wm_delete;
+    g_win = window;
 
     LOG_INFO("window system initialized (X11)");
     return window;
@@ -71,24 +77,23 @@ void window_system_kill(window_system_t *window) {
     LOG_INFO("window system kill (X11)");
 }
 
-bool window_system_pump(window_system_t *window, input_system_t *input,
-                        event_system_t *event) {
+bool window_system_pump(void) {
     XEvent ev;
     bool is_quit = false;
 
-    while (XPending(window->native_win.display)) {
-        XNextEvent(window->native_win.display, &ev);
+    while (XPending(g_win->native_win.display)) {
+        XNextEvent(g_win->native_win.display, &ev);
 
         switch (ev.type) {
             case KeyPress:
             case KeyRelease: {
                 bool pressed = ev.type == KeyPress;
                 KeySym ks =
-                    XkbKeycodeToKeysym(window->native_win.display,
+                    XkbKeycodeToKeysym(g_win->native_win.display,
                                        (KeyCode)ev.xkey.keycode, 0,
                                        (ev.xkey.state & ShiftMask) ? 1 : 0);
                 input_keys_t key = keycode_translate((uint32_t)ks);
-                input_process_key(input, event, key, pressed);
+                input_process_key(key, pressed);
             } break;
 
             case ButtonPress:
@@ -99,13 +104,20 @@ bool window_system_pump(window_system_t *window, input_system_t *input,
                     case Button1: mb = INPUT_MB_LEFT; break;
                     case Button2: mb = INPUT_MB_MIDDLE; break;
                     case Button3: mb = INPUT_MB_RIGHT; break;
+                    case Button4:
+                        if (pressed) input_process_mouse_wheel(1);
+                        break;
+                    case Button5:
+                        if (pressed) input_process_mouse_wheel(-1);
+                        break;
                 }
-                if (mb != INPUT_MB_MAX)
-                    input_process_button(input, event, mb, pressed);
+                if (mb != INPUT_MB_MAX) {
+                    input_process_button(mb, pressed);
+                }
             } break;
 
             case MotionNotify: {
-                input_process_mouse_move(input, event, (int16_t)ev.xmotion.x,
+                input_process_mouse_move((int16_t)ev.xmotion.x,
                                          (int16_t)ev.xmotion.y);
             } break;
 
@@ -115,26 +127,26 @@ bool window_system_pump(window_system_t *window, input_system_t *input,
                 event_t e;
                 e.data.resize.width = (uint16_t)ce->width;
                 e.data.resize.height = (uint16_t)ce->height;
-                event_push(event, EVENT_RESIZE, &e, NULL);
+                event_push(EVENT_RESIZE, &e, NULL);
             } break;
 
             case UnmapNotify: {
                 event_t e = {};
-                event_push(event, EVENT_SUSPEND, &e, NULL);
+                event_push(EVENT_SUSPEND, &e, NULL);
             } break;
 
             case MapNotify: {
                 event_t e = {};
-                event_push(event, EVENT_RESUME, &e, NULL);
+                event_push(EVENT_RESUME, &e, NULL);
             } break;
 
             case ClientMessage: {
                 XClientMessageEvent *cm = (XClientMessageEvent *)&ev;
 
-                if ((Atom)cm->data.l[0] == window->native_win.atom) {
+                if ((Atom)cm->data.l[0] == g_win->native_win.atom) {
                     event_t e;
                     e.data.raw[0] = (uint8_t)cm->window;
-                    event_push(event, EVENT_QUIT, &e, NULL);
+                    event_push(EVENT_QUIT, &e, NULL);
                     is_quit = true;
                 }
             } break;

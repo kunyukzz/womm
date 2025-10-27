@@ -61,8 +61,10 @@ static bool load_from_file(texture_system_t *tex, const char *name,
     out_tex->height = (uint32_t)height;
     out_tex->channels = (uint32_t)channels;
 
+    /*
     printf("[Texture] create: %s (%d/%d/%d) - expected size: %lu bytes\n", path,
            width, height, channels, (uint64_t)width * (uint64_t)height * 4);
+           */
 
     if (!pixel) {
         return false;
@@ -76,8 +78,20 @@ static bool load_from_file(texture_system_t *tex, const char *name,
 
 static bool load_womm_tex(texture_system_t *tex) {
     bool loaded = true;
-    if (!load_from_file(tex, "textures/test", &tex->gear_base)) {
+    if (!load_from_file(tex, "textures/rocks", &tex->gear_base)) {
         tex->gear_base = tex->default_texture;
+        LOG_WARN("texture not found. fallback!");
+        loaded = false;
+    }
+
+    if (!load_from_file(tex, "textures/test", &tex->vulkan_logo)) {
+        tex->vulkan_logo = tex->default_texture;
+        LOG_WARN("texture not found. fallback!");
+        loaded = false;
+    }
+
+    if (!load_from_file(tex, "textures/memes", &tex->memes)) {
+        tex->memes = tex->default_texture;
         LOG_WARN("texture not found. fallback!");
         loaded = false;
     }
@@ -86,6 +100,8 @@ static bool load_womm_tex(texture_system_t *tex) {
 
 static void unload_womm_tex(texture_system_t *tex) {
     render_tex_kill(&tex->gear_base);
+    render_tex_kill(&tex->vulkan_logo);
+    render_tex_kill(&tex->memes);
 }
 
 texture_system_t *texture_system_init(arena_alloc_t *arena) {

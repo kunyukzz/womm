@@ -144,19 +144,14 @@ typedef struct input_system_t input_system_t;
 
 // initializer state
 input_system_t *input_system_init(arena_alloc_t *arena);
-void input_system_update(input_system_t *input, float delta,
-                         arena_alloc_t *frame_arena);
 void input_system_kill(input_system_t *input);
+void input_system_update(float delta);
 
 // runtime
-void input_process_key(input_system_t *input, event_system_t *event,
-                       input_keys_t key, bool is_press);
-void input_process_button(input_system_t *input, event_system_t *event,
-                          input_button_t button, bool is_press);
-void input_process_mouse_move(input_system_t *input, event_system_t *event,
-                              int16_t pos_x, int16_t pos_y);
-void input_process_mouse_wheel(input_system_t *input, event_system_t *event,
-                               int8_t delta_z);
+void input_process_key(input_keys_t key, bool is_press);
+void input_process_button(input_button_t button, bool is_press);
+void input_process_mouse_move(int16_t pos_x, int16_t pos_y);
+void input_process_mouse_wheel(int8_t delta_z);
 
 // keys
 bool key_press(input_keys_t key);

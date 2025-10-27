@@ -76,7 +76,6 @@ INL void *read_image_file(const char *path, int32_t *width, int32_t *height,
 
 INL void *read_image_file(const char *path, int32_t *width, int32_t *height,
                           int32_t *channels) {
-    stbi_set_flip_vertically_on_load(true);
 
     file_t file;
     if (!filesys_open(path, READ_BINARY, &file)) {
@@ -102,6 +101,7 @@ INL void *read_image_file(const char *path, int32_t *width, int32_t *height,
     }
     filesys_close(&file);
 
+    stbi_set_flip_vertically_on_load(true);
     uint8_t *pixels = stbi_load_from_memory(data, (int32_t)size, width, height,
                                             channels, STBI_rgb_alpha);
     WFREE(data, size, MEM_RESOURCE);

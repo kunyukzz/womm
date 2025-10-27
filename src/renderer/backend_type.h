@@ -10,6 +10,7 @@
 
 #define VK_MATERIAL_COUNT 1024
 #define VK_SHADER_SAMPLER_COUNT 1
+#define MAX_VK_TEXTURE 3
 
 /************************************
  * SWAPCHAIN
@@ -142,6 +143,7 @@ typedef struct {
     VkSampler sampler;
 
     bool needs_update[FRAME_FLIGHT];
+    uint32_t current_idx[FRAME_FLIGHT];
 } vk_material_t;
 
 /************************************

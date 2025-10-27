@@ -163,6 +163,23 @@ static bool chk_dvc_support(VkPhysicalDevice gpu) {
         }
     }
 
+    if (dvc_prop.limits.maxPushConstantsSize < 128) {
+        LOG_WARN("GPU supports only %d bytes of push constants (need 128)",
+                 dvc_prop.limits.maxPushConstantsSize);
+        WFREE(avail, sizeof(VkExtensionProperties) * count, MEM_RENDER);
+        // return false;
+    }
+
+    if (dvc_prop.limits.maxImageArrayLayers < 16) {
+        LOG_WARN("GPU supports only %d texture array layers (need at least 16)",
+                 dvc_prop.limits.maxImageArrayLayers);
+    }
+
+    if (dvc_prop.limits.maxPerStageDescriptorSampledImages < 16) {
+        LOG_WARN("GPU supports only %d sampled images (need at least 16)",
+                 dvc_prop.limits.maxPerStageDescriptorSampledImages);
+    }
+
     WFREE(avail, sizeof(VkExtensionProperties) * count, MEM_RENDER);
     return true;
 }
@@ -170,6 +187,7 @@ static bool chk_dvc_support(VkPhysicalDevice gpu) {
 static int32_t score_device(VkPhysicalDevice gpu) {
     VkPhysicalDeviceProperties props;
     VkPhysicalDeviceMemoryProperties mems;
+    VkPhysicalDeviceLimits limits = props.limits;
     re.vkGetPhysicalDeviceProperties(gpu, &props);
     re.vkGetPhysicalDeviceMemoryProperties(gpu, &mems);
 
@@ -184,6 +202,16 @@ static int32_t score_device(VkPhysicalDevice gpu) {
         if (mems.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
             score += (mems.memoryHeaps[i].size / (128 * 1024 * 1024));
     }
+
+    score += limits.maxImageArrayLayers;
+    score += limits.maxPerStageDescriptorSampledImages / 16;
+    score += limits.maxPushConstantsSize / 16;
+
+    LOG_TRACE("max texture array layers: %d", limits.maxImageArrayLayers);
+    LOG_TRACE("max sampled images: %d",
+              limits.maxPerStageDescriptorSampledImages);
+    LOG_TRACE("max push constants size: %d", limits.maxPushConstantsSize);
+
     return score;
 }
 
@@ -1510,7 +1538,7 @@ static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = mat->object_set[i],
             .dstBinding = 0,
-            .descriptorCount = 1,
+            .descriptorCount = 1, // count of buffer for material per object
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .pBufferInfo = &obj_buffer,
         };
@@ -1535,7 +1563,7 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
         {.stageFlags =
              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
          .offset = 0,
-         .size = sizeof(mat4) + sizeof(vec4)},
+         .size = sizeof(mat4) + sizeof(vec4) + sizeof(uint32_t)},
     };
 
     VkVertexInputAttributeDescription attrs[3] =
@@ -1619,12 +1647,12 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
 
     obj_binding[1].binding = 1;
     obj_binding[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    obj_binding[1].descriptorCount = 1;
+    obj_binding[1].descriptorCount = MAX_VK_TEXTURE;
     obj_binding[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutCreateInfo obj_layout = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 2,
+        .bindingCount = 2, // UBO & IMAGE_SAMPLER
         .pBindings = obj_binding,
     };
     CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &obj_layout,
@@ -1639,13 +1667,12 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
 
     // This for image sampler - binding 1
     obj_pool_size[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    obj_pool_size[1].descriptorCount =
-        VK_SHADER_SAMPLER_COUNT * VK_MATERIAL_COUNT;
+    obj_pool_size[1].descriptorCount = MAX_VK_TEXTURE * FRAME_FLIGHT;
 
     VkDescriptorPoolCreateInfo obj_pool = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = VK_MATERIAL_COUNT,
-        .poolSizeCount = 2,
+        .maxSets = VK_MATERIAL_COUNT * FRAME_FLIGHT,
+        .poolSizeCount = 2, // UBO & IMAGE_SAMPLER
         .pPoolSizes = obj_pool_size,
     };
     CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &obj_pool, core->alloc,
@@ -1715,8 +1742,10 @@ void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
     struct {
         mat4 model;
         vec4 diffuse_color;
+        uint32_t texture_index;
     } push = {.model = obj->model,
-              .diffuse_color = obj->material.diffuse_color};
+              .diffuse_color = obj->material.diffuse_color,
+              .texture_index = obj->material.texture_index};
 
     re.vkCmdPushConstants(buffer, layout,
                           VK_SHADER_STAGE_VERTEX_BIT |
@@ -1724,6 +1753,9 @@ void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
                           0, sizeof(push), &push);
 }
 
+/*
+ * THIS CAN BE USED IF BINDING MATERIAL IN RUNTIME (FULL OF BUGS)
+ *
 void material_bind(vk_core_t *core, vk_material_t *mat, VkCommandBuffer buffer,
                    VkPipelineLayout layout, object_bundle_t *obj,
                    uint32_t frame_idx) {
@@ -1732,30 +1764,88 @@ void material_bind(vk_core_t *core, vk_material_t *mat, VkCommandBuffer buffer,
     }
 
     vk_texture_t *data = (vk_texture_t *)obj->material.tex->data_internal;
-    vk_object_data_t obj_data;
-    obj_data.diffuse_color = obj->material.diffuse_color;
+    // void *requested_texture = obj->material.tex->data_internal;
 
-    VkDescriptorImageInfo img_info = {
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .imageView = data->image.view,
-        .sampler = data->sampler,
-    };
+    if (mat->needs_update[frame_idx]) {
+        LOG_DEBUG("UPDATING descriptor for frame %d", frame_idx);
+        VkDescriptorImageInfo img_info = {
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = data->image.view,
+            .sampler = data->sampler,
+        };
 
-    VkWriteDescriptorSet obj_tex_write = {
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = mat->object_set[frame_idx],
-        .dstBinding = 1,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo = &img_info,
-    };
+        VkWriteDescriptorSet obj_tex_write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = mat->object_set[frame_idx],
+            .dstBinding = 1,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &img_info,
+        };
+        re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_tex_write, 0, NULL);
+        mat->needs_update[frame_idx] = false;
+    }
 
     VkDescriptorSet sets[2] = {
         mat->global_sets,
         mat->object_set[frame_idx],
     };
 
-    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &obj_tex_write, 0, NULL);
     re.vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
                                0, 2, sets, 0, 0);
+}
+*/
+
+void material_prepare(vk_core_t *core, vk_material_t *mat, uint32_t frame_idx,
+                      object_bundle_t *objects, uint32_t object_count) {
+    VkDescriptorImageInfo img_infos[MAX_VK_TEXTURE] = {};
+    uint32_t texture_count = 0;
+
+    for (uint32_t i = 0; i < object_count; i++) {
+        if (objects[i].material.tex && objects[i].material.tex->data_internal) {
+            vk_texture_t *data =
+                (vk_texture_t *)objects[i].material.tex->data_internal;
+
+            // Check if texture already added
+            bool found = false;
+            for (uint32_t j = 0; j < texture_count; j++) {
+                if (img_infos[j].imageView == data->image.view) {
+                    objects[i].material.texture_index = j; // Set index
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found && texture_count < MAX_VK_TEXTURE) {
+                img_infos[texture_count] = (VkDescriptorImageInfo){
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    .imageView = data->image.view,
+                    .sampler = data->sampler,
+                };
+                objects[i].material.texture_index = texture_count;
+                texture_count++;
+            }
+        }
+    }
+
+    VkWriteDescriptorSet tex_write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = mat->object_set[frame_idx],
+        .dstBinding = 1,
+        .descriptorCount = MAX_VK_TEXTURE,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = img_infos,
+    };
+
+    re.vkUpdateDescriptorSets(core->logic_dvc, 1, &tex_write, 0, NULL);
+}
+
+void material_bind(vk_material_t *mat, VkCommandBuffer cmds,
+                   VkPipelineLayout layout, uint32_t frame_idx) {
+    VkDescriptorSet sets[2] = {
+        mat->global_sets,
+        mat->object_set[frame_idx],
+    };
+    re.vkCmdBindDescriptorSets(cmds, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0,
+                               2, sets, 0, 0);
 }

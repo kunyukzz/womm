@@ -1,13 +1,14 @@
-// Fragment GLSL
+// Fragment GLSL - Default_Tex
 #version 420
 layout(location = 0) out vec4 out_Color;
 
 layout(push_constant) uniform Push {
 	mat4 model;
 	vec4 diffuse_color;
+	uint texture_index;
 } pc;
 
-layout(set = 1, binding = 1) uniform sampler2D diffuse_sampler;
+layout(set = 1, binding = 1) uniform sampler2D diffuse_sampler[3];
 
 layout(location = 1) in struct DTO {
 	vec3 normal;
@@ -23,14 +24,6 @@ void main() {
 	float lightlevel = diff > 0.0 ? 0.8 : 0.4;
 	float intensity = ambient + (diff * 0.85);
 
-	//intensity = floor(intensity * 4.0) / 4.0;
-
-	vec4 texColor = texture(diffuse_sampler, in_dto.texcoord);
+	vec4 texColor = texture(diffuse_sampler[pc.texture_index], in_dto.texcoord);
 	out_Color = pc.diffuse_color * texColor * intensity;
-	//out_Color = vec4(texColor.rgb * lightlevel, 1.0);
-
-	// raw normal
-	//out_Color = vec4(normal * 0.5 + 0.5, 1.0);
-
-	//out_Color = pc.diffuse_color * texture(diffuse_sampler, in_dto.texcoord);
 }
