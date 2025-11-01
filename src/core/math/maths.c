@@ -457,7 +457,7 @@ mat4 mat4_column_ortho(float left, float right, float bottom, float top,
     // Translate
     result.data[12] = -(right + left) * lr;
     result.data[13] = -(top + bottom) * bt;
-    result.data[13] = -(far + near) * nf;
+    result.data[14] = -(far + near) * nf;
 
     return result;
 }

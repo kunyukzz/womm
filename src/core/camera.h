@@ -9,6 +9,8 @@
 typedef struct {
     mat4 world_proj;
     mat4 world_view;
+    mat4 ui_proj;
+    mat4 ui_view;
 
     float near, far, fov;
     vec3 position;

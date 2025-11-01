@@ -2,6 +2,7 @@
 #include "core/event.h"
 #include "core/input.h"
 #include "core/memory.h"
+#include "core/timer.h"
 #include "core/math/maths.h"
 #include "platform/filesystem.h"
 #include "renderer/frontend.h"
@@ -17,6 +18,7 @@ typedef struct {
     arena_alloc_t persistent_arena;
     arena_alloc_t frame_arena;
 
+    timer_t timer;
     render_bundle_t bundle;
 
     file_system_t *fs;
@@ -29,6 +31,11 @@ typedef struct {
     texture_system_t *tex;
     material_system_t *mat;
     game_system_t *game;
+
+    float delta;
+    double last_time;
+    bool is_running;
+    bool is_suspend;
 } system_t;
 
 static system_t g_system;
@@ -83,9 +90,7 @@ static void system_log(void) {
     LOG_TRACE("Arena Usage: %lu/%lu bytes (%.1f%%)", used, total,
               usage_percent);
 
-    if (usage_percent < 50.0f) {
-        // LOG_WARN("Wasted space! Arena is only %.1f%% used", usage_percent);
-    } else if (usage_percent > 90.0f) {
+    if (usage_percent > 90.0f) {
         LOG_WARN("Arena nearly full! %.1f%% used", usage_percent);
     }
 }
@@ -124,10 +129,10 @@ static bool system_init(void) {
     g_system.game = game_init();
 
     // bundle initialize
-    g_system.bundle.delta = g_system.game->delta;
+    // g_system.bundle.delta = g_system.delta;
 
     // TODO: all of this was temporary code!!!
-    g_system.bundle.obj[0].geo = &g_system.geo->default_geo;
+    g_system.bundle.obj[0].geo = &g_system.geo->cube;
     g_system.bundle.obj[0].model =
         mat4_translate((vec3){.comp1.x = -5.0f, -2.5f, 0.0f, 0});
     g_system.bundle.obj[0].material.diffuse_color =
@@ -135,7 +140,7 @@ static bool system_init(void) {
     g_system.bundle.obj[0].material.tex = &g_system.tex->gear_base;
     g_system.bundle.obj[0].material.texture_index = 0;
 
-    g_system.bundle.obj[1].geo = &g_system.geo->default_geo;
+    g_system.bundle.obj[1].geo = &g_system.geo->cube;
     g_system.bundle.obj[1].model =
         mat4_translate((vec3){.comp1.x = 5.0f, -2.5f, 0.0f, 0});
     g_system.bundle.obj[1].material.diffuse_color =
@@ -144,14 +149,21 @@ static bool system_init(void) {
     g_system.bundle.obj[1].material.texture_index = 1;
 
     g_system.bundle.obj[2].geo = &g_system.geo->plane;
-    vec3 scale = (vec3){{2.0f, 1.0f, 2.0f, 0}};
+    vec3 scale = (vec3){{3.0f, 1.0f, 3.0f, 0}};
     g_system.bundle.obj[2].model = mat4_scale(scale);
     g_system.bundle.obj[2].material.diffuse_color =
         (vec4){{1.0f, 1.0f, 1.0f, 1.0f}};
     g_system.bundle.obj[2].material.tex = &g_system.tex->memes;
     g_system.bundle.obj[2].material.texture_index = 2;
 
-    g_system.bundle.obj_count = 3;
+    g_system.bundle.ui_obj.geo = &g_system.geo->plane2D;
+    g_system.bundle.ui_obj.model = mat4_translate((vec3){{10.0f, 10.0f, 0, 0}});
+    g_system.bundle.ui_obj.material.diffuse_color =
+        (vec4){{1.0f, 1.0f, 1.0f, 1.0f}};
+    g_system.bundle.ui_obj.material.tex = &g_system.tex->debugUI;
+
+    g_system.bundle.world_obj_count = 3;
+    g_system.bundle.debug_ui_count = 1;
 
 #if DEBUG
     system_log();
@@ -164,13 +176,13 @@ static bool system_init(void) {
     event_reg(EVENT_KEY_PRESS, game_on_input, NULL);
     event_reg(EVENT_KEY_RELEASE, game_on_input, NULL);
 
-    init_random_rotation();
+    // init_random_rotation();
 
     return true;
 }
 
 static void system_kill(void) {
-    g_system.game->is_running = false;
+    g_system.is_running = false;
 
     event_unreg(EVENT_KEY_RELEASE, game_on_input, NULL);
     event_unreg(EVENT_KEY_PRESS, game_on_input, NULL);
@@ -202,44 +214,44 @@ int main(void) {
     const double TARGET_FPS = 60.0;
     const double TARGET_FRAME_TIME = 1.0 / TARGET_FPS;
 
-    g_system.game->is_running = true;
-    timer_start(&g_system.game->timer);
-    timer_update(&g_system.game->timer);
-    g_system.game->last_time = g_system.game->timer.elapsed;
+    g_system.is_running = true;
+    timer_start(&g_system.timer);
+    timer_update(&g_system.timer);
+    g_system.last_time = g_system.timer.elapsed;
 
     double runtime = 0;
     uint8_t frame_count = 0;
-    const bool limit = true;
+    const bool limit = false;
 
     LOG_INFO("%s", mem_debug_stat());
     LOG_INFO("%s", vram_status(g_system.render));
 
-    while (g_system.game->is_running) {
+    while (g_system.is_running) {
         if (!window_system_pump()) {
-            g_system.game->is_running = false;
+            g_system.is_running = false;
         };
 
-        if (!g_system.game->is_suspend) {
-            timer_update(&g_system.game->timer);
-            double curr_time = g_system.game->timer.elapsed;
-            g_system.game->delta =
-                (float)(curr_time - g_system.game->last_time);
+        if (!g_system.is_suspend) {
+            timer_update(&g_system.timer);
+            double curr_time = g_system.timer.elapsed;
+            float delta = (float)(curr_time - g_system.last_time);
 
-            g_system.game->last_time = curr_time;
+            g_system.last_time = curr_time;
             double frame_time_start = get_abs_time();
 
-            input_system_update(g_system.game->delta);
+            input_system_update(delta);
 
-            if (!game_update(g_system.game, g_system.game->delta)) {
-                g_system.game->is_running = false;
+            if (!game_update(g_system.game, delta)) {
+                g_system.is_running = false;
                 break;
             }
-            if (!game_render(g_system.game, g_system.game->delta)) {
-                g_system.game->is_running = false;
+            if (!game_render(g_system.game, delta)) {
+                g_system.is_running = false;
                 break;
             }
 
-            update_cube_rotation(g_system.game->delta);
+            // update_cube_rotation(g_system.game->delta);
+            g_system.bundle.delta = delta;
             render_system_draw(g_system.render, &g_system.bundle);
 
             double next_frame_time = frame_time_start + TARGET_FRAME_TIME;
@@ -254,7 +266,7 @@ int main(void) {
 
 #if DEBUG
             static double fps_timer = 0.0;
-            fps_timer += g_system.game->delta;
+            fps_timer += delta;
 
             if (fps_timer >= 1.0) {
                 printf("FPS: %d\n", frame_count);
@@ -297,18 +309,18 @@ bool game_on_event(uint32_t type, event_t *ev, void *sender, void *recipient) {
     switch (type) {
         case EVENT_QUIT: {
             LOG_INFO("EVENT_QUIT received. Shutdown...");
-            g_system.game->is_running = false;
+            g_system.is_running = false;
             return true;
         } break;
         case EVENT_SUSPEND: {
             LOG_INFO("EVENT_SUSPEND received. Suspend...");
-            g_system.game->is_suspend = true;
+            g_system.is_suspend = true;
             return true;
         } break;
         case EVENT_RESUME: {
             LOG_INFO("EVENT_RESUME received. Resume...");
-            g_system.game->is_suspend = false;
-            g_system.game->is_running = true;
+            g_system.is_suspend = false;
+            g_system.is_running = true;
             return true;
         } break;
     }
@@ -328,11 +340,11 @@ bool game_on_resize(uint32_t type, event_t *ev, void *sender, void *recipient) {
             g_system.window->native_win.height = h;
 
             if (w == 0 || h == 0) {
-                g_system.game->is_suspend = true;
+                g_system.is_suspend = true;
                 return true;
             } else {
-                if (g_system.game->is_suspend) {
-                    g_system.game->is_suspend = false;
+                if (g_system.is_suspend) {
+                    g_system.is_suspend = false;
                 }
                 render_system_resize(g_system.window->native_win.width,
                                      g_system.window->native_win.height);

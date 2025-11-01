@@ -7,8 +7,9 @@
 
 typedef struct {
     arena_alloc_t *arena;
-    geo_gpu_t default_geo;
+    geo_gpu_t cube;
     geo_gpu_t plane;
+    geo_gpu_t plane2D;
 } geometry_system_t;
 
 geometry_system_t *geo_system_init(arena_alloc_t *arena);

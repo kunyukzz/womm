@@ -25,7 +25,6 @@ bool game_update(game_system_t *game, float delta) {
     if (button_press(INPUT_MB_LEFT)) {
         LOG_TRACE("left click!!");
     }
-
     if (key_press(INPUT_KEY_LEFT)) {
         cam_yaw(game->cam, move_speed * delta);
     }

@@ -95,6 +95,12 @@ static bool load_womm_tex(texture_system_t *tex) {
         LOG_WARN("texture not found. fallback!");
         loaded = false;
     }
+
+    if (!load_from_file(tex, "textures/debugUI", &tex->debugUI)) {
+        tex->debugUI = tex->default_texture;
+        LOG_WARN("texture not found. fallback!");
+        loaded = false;
+    }
     return loaded;
 }
 
@@ -102,6 +108,7 @@ static void unload_womm_tex(texture_system_t *tex) {
     render_tex_kill(&tex->gear_base);
     render_tex_kill(&tex->vulkan_logo);
     render_tex_kill(&tex->memes);
+    render_tex_kill(&tex->debugUI);
 }
 
 texture_system_t *texture_system_init(arena_alloc_t *arena) {

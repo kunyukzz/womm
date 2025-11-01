@@ -315,8 +315,8 @@ static bool create_logical_device(vk_core_t *core) {
     VkPhysicalDeviceFeatures enable_feats = {};
     enable_feats.fillModeNonSolid = VK_TRUE;
     enable_feats.multiDrawIndirect = VK_TRUE;
-    enable_feats.depthClamp = VK_TRUE;
-    enable_feats.wideLines = VK_TRUE;
+    // enable_feats.depthClamp = VK_TRUE;
+    // enable_feats.wideLines = VK_TRUE;
 
     VkDeviceCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -978,8 +978,10 @@ bool renderpass_init(vk_core_t *core, vk_renderpass_t *rpass,
     color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color.initialLayout = prev_pass ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
                                     : VK_IMAGE_LAYOUT_UNDEFINED;
-    color.finalLayout = next_pass ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-                                  : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    color.finalLayout = next_pass ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+                                  : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
     attachments[attach_count++] = color;
 
     VkAttachmentReference color_ref = {};
@@ -1343,12 +1345,11 @@ bool pipeline_init(vk_core_t *core, vk_pipeline_t *pipeline,
                                        core->alloc, &pipeline->layout));
 
     VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT,
-                                       VK_DYNAMIC_STATE_SCISSOR,
-                                       VK_DYNAMIC_STATE_LINE_WIDTH};
+                                       VK_DYNAMIC_STATE_SCISSOR};
 
     VkPipelineDynamicStateCreateInfo dyn_info = {};
     dyn_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dyn_info.dynamicStateCount = 3;
+    dyn_info.dynamicStateCount = 2;
     dyn_info.pDynamicStates = dynamic_states;
 
     /*** graphic pipeline ***/
@@ -1400,7 +1401,7 @@ void pipeline_kill(vk_core_t *core, vk_pipeline_t *pipeline) {
 }
 
 /************************************
- * MATERIAL
+ * SHADER
  ************************************/
 static VkShaderModule vk_shader_create(vk_core_t *core, const void *bytecode,
                                        VkDeviceSize size) {
@@ -1463,6 +1464,9 @@ static void unset_shader(vk_core_t *core, vk_material_t *material) {
     }
 }
 
+/************************************
+ * MATERIAL WORLD
+ ************************************/
 static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
     // Allocate global descriptor
     void *glob_map = NULL;
@@ -1547,8 +1551,8 @@ static bool set_material_descriptors(vk_core_t *core, vk_material_t *mat) {
     return true;
 }
 
-static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
-                                  vk_renderpass_t *rpass) {
+static bool set_world_pipeline(vk_core_t *core, vk_material_t *mat,
+                               vk_renderpass_t *rpass) {
     VkPipelineShaderStageCreateInfo stages[2] =
         {{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -1596,6 +1600,61 @@ static bool set_material_pipeline(vk_core_t *core, vk_material_t *mat,
                             .depth_test = true,
                             .depth_write = true,
                             .cull_mode = VK_CULL_MODE_BACK_BIT};
+
+    if (!pipeline_init(core, &mat->pipelines, rpass, &pipeline_desc, config)) {
+        LOG_ERROR("Pipeline cannot be created");
+        return false;
+    }
+
+    return true;
+}
+
+static bool set_debug_pipeline(vk_core_t *core, vk_material_t *mat,
+                               vk_renderpass_t *rpass) {
+    VkPipelineShaderStageCreateInfo stages[2] =
+        {{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+          .stage = VK_SHADER_STAGE_VERTEX_BIT,
+          .module = mat->shaders.vert,
+          .pName = mat->shaders.entry_point},
+         {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+          .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .module = mat->shaders.frag,
+          .pName = mat->shaders.entry_point}};
+
+    VkPushConstantRange push_constants[] = {
+        {.stageFlags =
+             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+         .offset = 0,
+         .size = sizeof(mat4) + sizeof(vec4)},
+    };
+
+    VkVertexInputAttributeDescription attrs[2] = {
+        {.location = 0,
+         .binding = 0,
+         .format = VK_FORMAT_R32G32B32_SFLOAT,
+         .offset = offsetof(vertex_3d, position)},
+        {.location = 1,
+         .binding = 0,
+         .format = VK_FORMAT_R32G32_SFLOAT,
+         .offset = offsetof(vertex_3d, texcoord)},
+    };
+
+    VkDescriptorSetLayout layouts[2] = {mat->global_layout, mat->object_layout};
+
+    vk_pipeline_desc_t pipeline_desc = {.stages = stages,
+                                        .stage_count = 2,
+                                        .desc_layouts = layouts,
+                                        .desc_layout_count = 2,
+                                        .push_consts = push_constants,
+                                        .push_constant_count = 1,
+                                        .attrs = attrs,
+                                        .attribute_count = 2,
+                                        .vertex_stride = sizeof(vertex_3d)};
+
+    pipe_config_t config = {.wireframe = false,
+                            .depth_test = false,
+                            .depth_write = false,
+                            .cull_mode = VK_CULL_MODE_NONE};
 
     if (!pipeline_init(core, &mat->pipelines, rpass, &pipeline_desc, config)) {
         LOG_ERROR("Pipeline cannot be created");
@@ -1700,7 +1759,7 @@ bool material_world_init(vk_core_t *core, vk_renderpass_t *rpass,
     }
 
     set_material_descriptors(core, mat);
-    set_material_pipeline(core, mat, rpass);
+    set_world_pipeline(core, mat, rpass);
 
     return true;
 }
@@ -1737,8 +1796,8 @@ void material_use(vk_material_t *mat, VkCommandBuffer buffer) {
     pipeline_bind(&mat->pipelines, buffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
 }
 
-void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
-                  VkPipelineLayout layout) {
+void material_world_set(object_bundle_t *obj, VkCommandBuffer buffer,
+                        VkPipelineLayout layout) {
     struct {
         mat4 model;
         vec4 diffuse_color;
@@ -1746,6 +1805,20 @@ void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
     } push = {.model = obj->model,
               .diffuse_color = obj->material.diffuse_color,
               .texture_index = obj->material.texture_index};
+
+    re.vkCmdPushConstants(buffer, layout,
+                          VK_SHADER_STAGE_VERTEX_BIT |
+                              VK_SHADER_STAGE_FRAGMENT_BIT,
+                          0, sizeof(push), &push);
+}
+
+void material_ui_set(object_bundle_t *obj, VkCommandBuffer buffer,
+                     VkPipelineLayout layout) {
+    struct {
+        mat4 model;
+        vec4 diffuse_color;
+    } push = {.model = obj->model,
+              .diffuse_color = obj->material.diffuse_color};
 
     re.vkCmdPushConstants(buffer, layout,
                           VK_SHADER_STAGE_VERTEX_BIT |
@@ -1797,7 +1870,8 @@ void material_bind(vk_core_t *core, vk_material_t *mat, VkCommandBuffer buffer,
 */
 
 void material_prepare(vk_core_t *core, vk_material_t *mat, uint32_t frame_idx,
-                      object_bundle_t *objects, uint32_t object_count) {
+                      object_bundle_t *objects, uint32_t object_count,
+                      bool is_world) {
     VkDescriptorImageInfo img_infos[MAX_VK_TEXTURE] = {};
     uint32_t texture_count = 0;
 
@@ -1816,7 +1890,17 @@ void material_prepare(vk_core_t *core, vk_material_t *mat, uint32_t frame_idx,
                 }
             }
 
-            if (!found && texture_count < MAX_VK_TEXTURE) {
+            if (is_world) {
+                if (!found && texture_count < MAX_VK_TEXTURE) {
+                    img_infos[texture_count] = (VkDescriptorImageInfo){
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .imageView = data->image.view,
+                        .sampler = data->sampler,
+                    };
+                    objects[i].material.texture_index = texture_count;
+                    texture_count++;
+                }
+            } else if (!found && texture_count < MAX_VK_TEXTURE_DEBUG) {
                 img_infos[texture_count] = (VkDescriptorImageInfo){
                     .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     .imageView = data->image.view,
@@ -1832,7 +1916,7 @@ void material_prepare(vk_core_t *core, vk_material_t *mat, uint32_t frame_idx,
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = mat->object_set[frame_idx],
         .dstBinding = 1,
-        .descriptorCount = MAX_VK_TEXTURE,
+        .descriptorCount = is_world ? MAX_VK_TEXTURE : MAX_VK_TEXTURE_DEBUG,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .pImageInfo = img_infos,
     };
@@ -1848,4 +1932,104 @@ void material_bind(vk_material_t *mat, VkCommandBuffer cmds,
     };
     re.vkCmdBindDescriptorSets(cmds, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0,
                                2, sets, 0, 0);
+}
+
+bool material_debug_ui_init(vk_core_t *core, vk_renderpass_t *rpass,
+                            vk_material_t *mat, const char *shader_name) {
+    memset(mat, 0, sizeof(vk_material_t));
+    if (!set_shader(core, mat, shader_name)) return false;
+
+    // Global descriptor
+    VkDescriptorSetLayoutBinding glob_binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    };
+    VkDescriptorSetLayoutCreateInfo glob_layout = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &glob_binding,
+    };
+    CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &glob_layout,
+                                            core->alloc, &mat->global_layout));
+
+    VkDescriptorPoolSize glob_size = {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                      .descriptorCount = FRAME_FLIGHT};
+
+    VkDescriptorPoolCreateInfo glob_pool = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = FRAME_FLIGHT,
+        .poolSizeCount = 1,
+        .pPoolSizes = &glob_size,
+    };
+    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &glob_pool, core->alloc,
+                                       &mat->global_pool));
+
+    // Object descriptor
+    VkDescriptorSetLayoutBinding obj_binding[2] = {};
+
+    obj_binding[0].binding = 0;
+    obj_binding[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    obj_binding[0].descriptorCount = 1;
+    obj_binding[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    obj_binding[1].binding = 1;
+    obj_binding[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    obj_binding[1].descriptorCount = MAX_VK_TEXTURE_DEBUG;
+    obj_binding[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo obj_layout = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 2, // UBO & IMAGE_SAMPLER
+        .pBindings = obj_binding,
+    };
+    CHECK_VK(re.vkCreateDescriptorSetLayout(core->logic_dvc, &obj_layout,
+                                            core->alloc, &mat->object_layout));
+
+    VkDescriptorPoolSize obj_pool_size[2];
+
+    // TODO: CHANGE VALUE DESCRIPTOR COUNT!!!!!!!
+    // This for unifom buffer - binding 0
+    obj_pool_size[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    obj_pool_size[0].descriptorCount = VK_MATERIAL_COUNT * FRAME_FLIGHT;
+
+    // This for image sampler - binding 1
+    obj_pool_size[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    obj_pool_size[1].descriptorCount = MAX_VK_TEXTURE_DEBUG * FRAME_FLIGHT;
+
+    VkDescriptorPoolCreateInfo obj_pool = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = VK_MATERIAL_COUNT * FRAME_FLIGHT,
+        .poolSizeCount = 2, // UBO & IMAGE_SAMPLER
+        .pPoolSizes = obj_pool_size,
+    };
+    CHECK_VK(re.vkCreateDescriptorPool(core->logic_dvc, &obj_pool, core->alloc,
+                                       &mat->object_pool));
+
+    if (!buffer_init(core, &mat->buffers, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     sizeof(vk_camera_data_t),
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     RE_BUFFER_UNIFORM)) {
+        LOG_ERROR("Failed to create global buffer");
+        return false;
+    }
+
+    for (uint32_t i = 0; i < FRAME_FLIGHT; ++i) {
+        if (!buffer_init(core, &mat->obj_buffers[i],
+                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                         sizeof(vk_object_data_t),
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         RE_BUFFER_UNIFORM)) {
+            LOG_ERROR("Failed to create object buffer");
+            return false;
+        }
+    }
+
+    set_material_descriptors(core, mat);
+    set_debug_pipeline(core, mat, rpass);
+
+    return true;
 }

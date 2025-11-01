@@ -6,11 +6,12 @@
 #include "core/math/math_type.h"
 #include "frontend_type.h"
 
-#define FRAME_FLIGHT 2
+#define FRAME_FLIGHT 3
 
 #define VK_MATERIAL_COUNT 1024
 #define VK_SHADER_SAMPLER_COUNT 1
 #define MAX_VK_TEXTURE 3
+#define MAX_VK_TEXTURE_DEBUG 1
 
 /************************************
  * SWAPCHAIN

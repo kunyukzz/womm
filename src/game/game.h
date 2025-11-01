@@ -1,18 +1,13 @@
 #ifndef GAME_H
 #define GAME_H
 
-#include "core/define.h"
-#include "core/timer.h"
+#include "core/define.h" // IWYU pragma: keep
 #include "core/camera.h"
 
 typedef struct {
-    timer_t timer;
     camera_system_t *cam;
 
     int32_t mouse_x, mouse_y;
-    bool is_running;
-    bool is_suspend;
-    double last_time;
     float delta;
 } game_system_t;
 

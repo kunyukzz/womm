@@ -2,44 +2,18 @@
 #define RENDERER_FRONTEND_H
 
 #include "core/define.h" // IWYU pragma: keep
-#include "core/camera.h"
+#include "platform/window.h"
 #include "frontend_type.h"
-#include "backend_type.h"
 
-typedef struct {
-    vk_core_t core;
-    vk_swapchain_t swap;
-    vk_renderpass_t main_pass;
-    vk_cmdbuffer_t cmds[FRAME_FLIGHT];
+typedef enum {
+    WORLD_PASS = 0x01,
+    DEBUG_UI_PASS = 0x02,
+} render_layer_t;
 
-    geo_gpu_t geo_gpu;
-    vk_buffer_t vertex_buffer;
-    uint32_t vertex_offset;
-    vk_buffer_t index_buffer;
-    uint32_t index_offset;
-
-    vk_material_t main_material;
-
-    VkSemaphore avail_sema[FRAME_FLIGHT];
-    VkSemaphore *done_sema;
-    VkFence frame_fence[FRAME_FLIGHT];
-    VkFence *image_fence;
-    VkFramebuffer *main_framebuff;
-
-    uint32_t frame_idx;
-    uint32_t image_idx;
-} render_t;
-
-typedef struct {
-    arena_alloc_t *arena;
-    window_t *window;
-    camera_system_t *camera;
-
-    render_t vk;
-    render_bundle_t bundle;
-} render_system_t;
+typedef struct render_system_t render_system_t;
 
 render_system_t *render_system_init(arena_alloc_t *arena, window_t *window);
+
 void render_system_kill(render_system_t *r);
 
 bool render_system_draw(render_system_t *r, render_bundle_t *bundle);

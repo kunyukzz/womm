@@ -49,7 +49,9 @@ typedef struct {
 
 typedef struct {
     object_bundle_t obj[MAX_GEO];
-    uint32_t obj_count;
+    object_bundle_t ui_obj;
+    uint32_t world_obj_count;
+    uint32_t debug_ui_count;
     float delta;
 } render_bundle_t;
 

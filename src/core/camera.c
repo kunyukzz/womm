@@ -18,9 +18,6 @@ camera_system_t *camera_system_init(arena_alloc_t *arena, window_t *window) {
     cam->main_cam.fov = 45.0f;
     cam->main_cam.dirty = true;
 
-    if (window->height == 0) window->height = 1;
-    if (window->width == 0) window->width = 1;
-
     cam->main_cam.world_proj =
         mat4_column_perspective(deg_to_rad(cam->main_cam.fov),
                                 (float)window->width / (float)window->height,
@@ -28,6 +25,10 @@ camera_system_t *camera_system_init(arena_alloc_t *arena, window_t *window) {
 
     cam->main_cam.world_view = mat4_identity();
     cam->main_cam.world_view = mat4_inverse_rigid(cam->main_cam.world_view);
+
+    cam->main_cam.ui_proj = mat4_column_ortho(0, (float)window->width, 0,
+                                              (float)window->height, -100, 100);
+    cam->main_cam.ui_view = mat4_identity();
 
     LOG_INFO("camera system initialize");
     g_cam = cam;
@@ -75,7 +76,4 @@ void cam_pitch(camera_system_t *cam, float amount) {
 
 camera_system_t *get_camera_system(void) { return g_cam; }
 
-camera_t *get_main_camera(void) {
-    if (!g_cam) return NULL;
-    return &g_cam->main_cam;
-}
+camera_t *get_main_camera(void) { return &g_cam->main_cam; }

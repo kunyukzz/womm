@@ -2,9 +2,53 @@
 #include "backend.h"
 #include "core/memory.h"
 #include "core/math/maths.h"
+#include "core/camera.h"
 
 #include <string.h>
 #include <stdio.h>
+
+typedef struct {
+    vk_core_t core;
+    vk_swapchain_t swap;
+    vk_renderpass_t main_pass;
+    vk_renderpass_t debug_ui_pass;
+    vk_cmdbuffer_t cmds[FRAME_FLIGHT];
+
+    geo_gpu_t geo_gpu;
+    vk_buffer_t vertex_buffer;
+    uint32_t vertex_offset;
+    vk_buffer_t index_buffer;
+    uint32_t index_offset;
+
+    vk_material_t main_material;
+    vk_material_t debug_material;
+
+    VkSemaphore avail_sema[FRAME_FLIGHT];
+    VkSemaphore *done_sema;
+    VkFence frame_fence[FRAME_FLIGHT];
+    VkFence *image_fence;
+    VkFramebuffer *main_framebuff;
+
+    uint32_t frame_idx;
+    uint32_t image_idx;
+} render_t;
+
+struct render_system_t {
+    arena_alloc_t *arena;
+    window_t *window;
+    camera_system_t *camera;
+
+    render_t vk;
+    render_bundle_t bundle;
+};
+
+void mat4_print(const char *name, mat4 m) {
+    printf("%s:\n", name);
+    for (int i = 0; i < 4; ++i) {
+        LOG_TRACE("[%.2f %.2f %.2f %.2f]", m.data[i * 4 + 0], m.data[i * 4 + 1],
+                  m.data[i * 4 + 2], m.data[i * 4 + 3]);
+    }
+}
 
 static render_system_t *g_re = NULL;
 
@@ -171,21 +215,19 @@ static void start_framebuffer(render_system_t *r) {
                                         r->vk.core.alloc,
                                         &r->vk.main_framebuff[i]));
 
-        /*
-        VkImageView attachments_ui[1] = {be->swap.img_views[i]};
+        VkImageView attachments_ui[1] = {r->vk.swap.img_views[i]};
         VkFramebufferCreateInfo ufb_info = {};
         ufb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        ufb_info.renderPass = be->overlay_pass.handle;
+        ufb_info.renderPass = r->vk.debug_ui_pass.handle;
         ufb_info.attachmentCount = 1;
         ufb_info.pAttachments = attachments_ui;
-        ufb_info.width = be->swap.extents.width;
-        ufb_info.height = be->swap.extents.height;
+        ufb_info.width = r->vk.swap.extents.width;
+        ufb_info.height = r->vk.swap.extents.height;
         ufb_info.layers = 1;
 
-        VK_CHK(be->core.vk.dvc.vkCreateFramebuffer(be->core.logic_dvc,
-                                                   &ufb_info, be->core.alloc,
-                                                   &be->swap.framebuffer[i]));
-                                                   */
+        CHECK_VK(re.vkCreateFramebuffer(r->vk.core.logic_dvc, &ufb_info,
+                                        r->vk.core.alloc,
+                                        &r->vk.swap.framebuffer[i]));
     }
 }
 
@@ -221,14 +263,14 @@ static void unset_framebuffer(render_system_t *r) {
 static bool set_object_buffer(render_system_t *r) {
     VkMemoryPropertyFlagBits mem_prop = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    const uint32_t vb_size_3d = sizeof(vertex_3d) * 1024 * 1024; // 32Mb
+    const uint64_t vb_size_3d = sizeof(vertex_3d) * 1024 * 1024;
     buffer_init(&r->vk.core, &r->vk.vertex_buffer,
                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 vb_size_3d, mem_prop, RE_BUFFER_VERTEX);
 
-    const uint32_t ib_size = sizeof(uint32_t) * 1024 * 1024; // 4Mb
+    const uint64_t ib_size = sizeof(uint32_t) * 1024 * 1024;
     buffer_init(&r->vk.core, &r->vk.index_buffer,
                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -254,6 +296,33 @@ static void unset_object_buffer(render_system_t *r) {
 }
 
 /************************************
+ * RECREATE SWAPCHAIN
+ ************************************/
+/*
+static bool set_reinit_swapchain(render_system_t *r) {
+    if (r->window->width == 0 || r->window->height== 0) {
+        return false;
+    }
+
+    re.vkDeviceWaitIdle(r->vk.core.logic_dvc);
+    swapchain_reinit(&r->vk.swap, &r->vk.core, r->window); // window only for
+                                                           // surface
+    r->window->width = cache_framebuffer_width;
+    r->window->height = cache_framebuffer_height;
+    cache_framebuffer_width = 0;
+    cache_framebuffer_height = 0;
+
+    unset_cmdbuffer(r);
+    stop_framebuffer(r);
+
+    start_framebuffer(r);
+    set_cmdbuffer(r);
+
+    return true;
+}
+*/
+
+/************************************
  * INTERNAL FRAME
  ************************************/
 static bool begin_frame(render_system_t *r, float delta) {
@@ -262,8 +331,8 @@ static bool begin_frame(render_system_t *r, float delta) {
     uint32_t frames = r->vk.frame_idx;
 
     /*
-    if (cache_frbuff_width != 0 || cache_frbuff_height != 0) {
-        set_reinit_swapchain(be);
+    if (r->window->width != 0 || r->window->height != 0) {
+        set_reinit_swapchain(r);
     }
     */
 
@@ -278,10 +347,10 @@ static bool begin_frame(render_system_t *r, float delta) {
                                  &r->vk.image_idx);
 
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        // set_reinit_swapchain(be);
+        // set_reinit_swapchain(r);
         return false;
     } else if (res == VK_SUBOPTIMAL_KHR) {
-        // set_reinit_swapchain(be);
+        // set_reinit_swapchain(r);
     } else if (res != VK_SUCCESS) {
         LOG_ERROR("vkAcquireNextImageKHR failed: %d", res);
         return false;
@@ -360,7 +429,7 @@ static bool end_frame(render_system_t *r, float delta) {
     VkResult res = re.vkQueuePresentKHR(core->present_queue, &present_info);
 
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR) {
-        // set_reinit_swapchain(be);
+        // set_reinit_swapchain(r);
         return false;
     } else if (res != VK_SUCCESS) {
         LOG_ERROR("vkQueuePresentKHR failed: %d", res);
@@ -375,19 +444,43 @@ static bool end_frame(render_system_t *r, float delta) {
 /************************************
  * RENDERPASS
  ************************************/
-static bool begin_pass(render_system_t *r) {
+static bool begin_pass(render_system_t *r, uint8_t pass_id) {
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
-    VkFramebuffer frbuffer = r->vk.main_framebuff[r->vk.image_idx];
+    VkFramebuffer frbuffer = 0;
+    vk_renderpass_t *rpass = 0;
 
-    renderpass_begin(&r->vk.main_pass, cmd, frbuffer, r->vk.swap.extents);
+    switch (pass_id) {
+        case WORLD_PASS:
+            rpass = &r->vk.main_pass;
+            frbuffer = r->vk.main_framebuff[r->vk.image_idx];
+            break;
+        case DEBUG_UI_PASS:
+            rpass = &r->vk.debug_ui_pass;
+            frbuffer = r->vk.swap.framebuffer[r->vk.image_idx];
+            break;
+        default: LOG_ERROR("begin pass id not recognized"); return false;
+    }
 
-    material_use(&r->vk.main_material, cmd);
+    renderpass_begin(rpass, cmd, frbuffer, r->vk.swap.extents);
+
+    switch (pass_id) {
+        case WORLD_PASS: material_use(&r->vk.main_material, cmd); break;
+        case DEBUG_UI_PASS: material_use(&r->vk.debug_material, cmd); break;
+    }
+
     return true;
 }
 
-static bool end_pass(render_system_t *r) {
+static bool end_pass(render_system_t *r, uint8_t pass_id) {
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
-    renderpass_end(&r->vk.main_pass, cmd);
+    vk_renderpass_t *rpass = 0;
+
+    switch (pass_id) {
+        case WORLD_PASS: rpass = &r->vk.main_pass; break;
+        case DEBUG_UI_PASS: rpass = &r->vk.debug_ui_pass; break;
+    }
+
+    renderpass_end(rpass, cmd);
     return true;
 }
 
@@ -400,7 +493,7 @@ static void draw_world(render_system_t *r, object_bundle_t *obj) {
     VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
     vk_pipeline_t pipeline = r->vk.main_material.pipelines;
 
-    material_set(obj, cmd, pipeline.layout);
+    material_world_set(obj, cmd, pipeline.layout);
 
     VkBuffer buff[] = {r->vk.vertex_buffer.handle};
     VkDeviceSize offset[] = {obj->geo->vertex_offset};
@@ -423,6 +516,37 @@ static void update_world(render_system_t *r) {
     r->vk.main_material.cam_ubo_data.view = r->camera->main_cam.world_view;
     memcpy(r->vk.main_material.buffers.mapped,
            &r->vk.main_material.cam_ubo_data, sizeof(vk_camera_data_t));
+}
+
+static void draw_debug_ui(render_system_t *r, object_bundle_t *obj) {
+    if (!obj->geo) return;
+
+    VkCommandBuffer cmd = r->vk.cmds[r->vk.frame_idx].handle;
+    vk_pipeline_t pipeline = r->vk.debug_material.pipelines;
+
+    material_ui_set(obj, cmd, pipeline.layout);
+
+    VkBuffer buff[] = {r->vk.vertex_buffer.handle};
+    VkDeviceSize offset[] = {obj->geo->vertex_offset};
+
+    re.vkCmdBindVertexBuffers(cmd, 0, 1, buff, offset);
+    re.vkCmdBindIndexBuffer(cmd, r->vk.index_buffer.handle,
+                            obj->geo->index_offset, VK_INDEX_TYPE_UINT32);
+
+    re.vkCmdDrawIndexed(cmd, obj->geo->index_count, 1, 0, 0, 0);
+}
+
+static void update_debug_ui(render_system_t *r) {
+    if (!r->vk.debug_material.buffers.mapped) {
+        LOG_ERROR("UBO frame %u not mapped!", r->vk.frame_idx);
+        return;
+    }
+
+    // update global
+    r->vk.debug_material.cam_ubo_data.proj = r->camera->main_cam.ui_proj;
+    r->vk.debug_material.cam_ubo_data.view = r->camera->main_cam.ui_view;
+    memcpy(r->vk.debug_material.buffers.mapped,
+           &r->vk.debug_material.cam_ubo_data, sizeof(vk_camera_data_t));
 }
 
 /************************************
@@ -470,14 +594,25 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
         return NULL;
     }
 
-    // VkClearColorValue purple = {{0.3f, 0.2f, 0.5f, 1.0f}};
-    VkClearColorValue black = {{0.01f, 0.01f, 0.01f, 1.0f}};
-    if (!renderpass_init(&r->vk.core, &r->vk.main_pass, &r->vk.swap, 1.0f, 0,
-                         COLOR_BUFFER | DEPTH_BUFFER, false, true, black)) {
-        LOG_FATAL("main renderpass not initialized");
-        return false;
+    { // RENDERPASS
+        // VkClearColorValue purple = {{0.3f, 0.2f, 0.5f, 1.0f}};
+        VkClearColorValue pure_black = {{0.0f, 0.0f, 0.0f, 1.0f}};
+        VkClearColorValue black = {{0.01f, 0.01f, 0.01f, 0.0f}};
+        if (!renderpass_init(&r->vk.core, &r->vk.main_pass, &r->vk.swap, 1.0f,
+                             0, COLOR_BUFFER | DEPTH_BUFFER | STENCIL_BUFFER,
+                             false, true, pure_black)) {
+            LOG_FATAL("main renderpass not initialized");
+            return false;
+        }
+        LOG_DEBUG("main renderpass initialize");
+
+        if (!renderpass_init(&r->vk.core, &r->vk.debug_ui_pass, &r->vk.swap,
+                             1.0f, 0, NO_FLAG, true, false, black)) {
+            LOG_FATAL("debug ui renderpass not initialized");
+            return false;
+        }
+        LOG_DEBUG("debug ui renderpass initialize");
     }
-    LOG_DEBUG("main renderpass initialize");
 
     set_sync(r);
     set_cmdbuffer(r);
@@ -486,6 +621,9 @@ render_system_t *render_system_init(arena_alloc_t *arena, window_t *window) {
 
     material_world_init(&r->vk.core, &r->vk.main_pass, &r->vk.main_material,
                         "shaders/Default_Tex");
+
+    material_debug_ui_init(&r->vk.core, &r->vk.debug_ui_pass,
+                           &r->vk.debug_material, "shaders/Default_DebugUI");
 
     /*
     { // TODO: Temporary code!!
@@ -536,6 +674,7 @@ void render_system_kill(render_system_t *r) {
 
     re.vkDeviceWaitIdle(r->vk.core.logic_dvc);
 
+    material_kill(&r->vk.core, &r->vk.debug_material);
     material_kill(&r->vk.core, &r->vk.main_material);
 
     unset_object_buffer(r);
@@ -543,7 +682,9 @@ void render_system_kill(render_system_t *r) {
     unset_cmdbuffer(r);
     unset_sync(r);
 
+    renderpass_kill(&r->vk.core, &r->vk.debug_ui_pass);
     renderpass_kill(&r->vk.core, &r->vk.main_pass);
+
     swapchain_kill(&r->vk.swap, &r->vk.core);
     core_kill(&r->vk.core);
 
@@ -554,13 +695,12 @@ void render_system_kill(render_system_t *r) {
 
 bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
     if (begin_frame(r, bundle->delta)) {
-        update_world(r);
 
-        // this pre-binding all texture (using 3 texture)
+        // this pre-binding all world texture (using 3 texture sampler array)
         material_prepare(&r->vk.core, &r->vk.main_material, r->vk.frame_idx,
-                         bundle->obj, bundle->obj_count);
+                         bundle->obj, bundle->world_obj_count, true);
 
-        if (!begin_pass(r)) {
+        if (!begin_pass(r, WORLD_PASS)) {
             LOG_ERROR("cannot do begin pass");
             return false;
         }
@@ -568,11 +708,33 @@ bool render_system_draw(render_system_t *r, render_bundle_t *bundle) {
         material_bind(&r->vk.main_material, r->vk.cmds[r->vk.frame_idx].handle,
                       r->vk.main_material.pipelines.layout, r->vk.frame_idx);
 
-        for (uint32_t i = 0; i < bundle->obj_count; ++i) {
+        update_world(r);
+        for (uint32_t i = 0; i < bundle->world_obj_count; ++i) {
             draw_world(r, &bundle->obj[i]);
         }
 
-        if (!end_pass(r)) {
+        if (!end_pass(r, WORLD_PASS)) {
+            LOG_ERROR("cannot do end pass");
+            return false;
+        }
+
+        // this pre-binding 1 debug ui texture
+        material_prepare(&r->vk.core, &r->vk.debug_material, r->vk.frame_idx,
+                         &bundle->ui_obj, bundle->debug_ui_count, false);
+        if (!begin_pass(r, DEBUG_UI_PASS)) {
+            LOG_ERROR("cannot do begin pass");
+            return false;
+        }
+
+        material_bind(&r->vk.debug_material, r->vk.cmds[r->vk.frame_idx].handle,
+                      r->vk.debug_material.pipelines.layout, r->vk.frame_idx);
+
+        update_debug_ui(r);
+        for (uint32_t i = 0; i < bundle->debug_ui_count; ++i) {
+            draw_debug_ui(r, &bundle->ui_obj);
+        }
+
+        if (!end_pass(r, DEBUG_UI_PASS)) {
             LOG_ERROR("cannot do end pass");
             return false;
         }
@@ -590,7 +752,11 @@ void render_system_resize(uint32_t width, uint32_t height) {
         g_re->camera->main_cam.world_proj =
             mat4_column_perspective(deg_to_rad(cam.fov), aspect, cam.near,
                                     cam.far);
-        g_re->camera->main_cam.dirty = false;
+        g_re->camera->main_cam.ui_proj =
+            mat4_column_ortho(0, (float)width, 0, (float)height, -100, 100);
+
+        printf("w/h after resize: %d/%d\n", width, height);
+        cam.dirty = false;
     }
 }
 
@@ -601,6 +767,11 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
     geo->vertex_count = v_count;
     geo->vertex_size = v_size;
     uint32_t total_size = v_size * v_count;
+
+    /*
+    printf("[Vertex] offset=%u, count=%u, size=%u, total_bytes=%u\n",
+           geo->vertex_offset, geo->vertex_count, geo->vertex_size, total_size);
+           */
 
     set_staging_data(g_re, &g_re->vk.vertex_buffer, g_re->vk.core.gfx_pool,
                      g_re->vk.core.graphic_queue, geo->vertex_offset,
@@ -613,6 +784,12 @@ void render_geo_init(geo_gpu_t *geo, uint32_t v_size, uint32_t v_count,
         geo->index_count = i_count;
         geo->index_size = i_size;
         total_size = i_size * i_count;
+
+        /*
+        printf("[Indices] offset=%u, count=%u, size=%u, total_bytes=%u\n",
+               geo->index_offset, geo->index_count, geo->index_size,
+               total_size);
+               */
 
         set_staging_data(g_re, &g_re->vk.index_buffer, g_re->vk.core.gfx_pool,
                          g_re->vk.core.graphic_queue, geo->index_offset,

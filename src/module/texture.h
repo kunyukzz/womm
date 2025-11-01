@@ -13,6 +13,7 @@ typedef struct {
     texture_data_t gear_base;
     texture_data_t vulkan_logo;
     texture_data_t memes;
+    texture_data_t debugUI;
 } texture_system_t;
 
 texture_system_t *texture_system_init(arena_alloc_t *arena);

@@ -132,11 +132,18 @@ void material_kill(vk_core_t *core, vk_material_t *material);
 
 void material_use(vk_material_t *mat, VkCommandBuffer buffer);
 
-void material_set(object_bundle_t *obj, VkCommandBuffer buffer,
-                  VkPipelineLayout layout);
+void material_world_set(object_bundle_t *obj, VkCommandBuffer buffer,
+                        VkPipelineLayout layout);
+
+void material_ui_set(object_bundle_t *obj, VkCommandBuffer buffer,
+                     VkPipelineLayout layout);
 
 void material_prepare(vk_core_t *core, vk_material_t *mat, uint32_t frame_idx,
-                      object_bundle_t *objects, uint32_t object_count);
+                      object_bundle_t *objects, uint32_t object_count,
+                      bool is_world);
 
 void material_bind(vk_material_t *mat, VkCommandBuffer cmds,
                    VkPipelineLayout layout, uint32_t frame_idx);
+
+bool material_debug_ui_init(vk_core_t *core, vk_renderpass_t *rpass,
+                            vk_material_t *mat, const char *shader_name);
